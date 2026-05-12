@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 
 import { PORT } from './config.js';
 import v1Api from './routes/v1-api.js';
+import { connectRedis } from './redis-client.js';
 import './scheduler.js';
 import logger from './logger.js';
 
@@ -21,6 +22,8 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/v1', v1Api);
+
+await connectRedis();
 
 app.get('/', (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));

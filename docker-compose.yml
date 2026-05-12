@@ -12,10 +12,10 @@ services:
     volumes:
       - dbdata:/var/lib/postgresql/data
 
-  # redis:
-  #   image: redis:latest
-  #   ports:
-  #     - "6379:6379"
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
 
   web:
     build:
@@ -26,8 +26,10 @@ services:
       - "3010:3000"
     depends_on:
       - db
+      - redis
     environment:
       - DATABASE_URL=postgres://postgres:abcd1234@db:5432/weatherindoubt6_development
+      - REDIS_URL=redis://redis:6379
       - TZ=Asia/Hong_Kong
       - SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}
     volumes:

@@ -53,6 +53,10 @@ export const ENABLE_API_LOGGING = process.env.ENABLE_API_LOGGING === 'y';
 
 export const FCM_API_KEY = process.env.FCM_API_KEY || '';
 
+export const REDIS_URL = process.env.REDIS_URL || '';
+const redisCacheTtl = Number.parseInt(process.env.REDIS_CACHE_TTL_SECONDS ?? '30', 10);
+export const REDIS_CACHE_TTL_SECONDS = Number.isNaN(redisCacheTtl) ? 30 : redisCacheTtl;
+
 export const URL_HOUR_FORECAST_SOURCE =
   process.env.URL_HOUR_FORECAST_SOURCE ||
   'https://www.hko.gov.hk/wxinfo/awsgis/forecast/%{code}.xml';

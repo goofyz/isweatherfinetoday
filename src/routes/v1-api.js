@@ -9,6 +9,7 @@ import { isEng, naturalNumber, omitNil, truncate, warningSortOrder, toDateStr } 
 import { FLICKR_DOWN } from '../locales.js';
 import { query, queryOne } from '../db.js';
 import logger from '../logger.js';
+import { getCache, setCache } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -18,6 +19,14 @@ router.use(express.urlencoded({ extended: true }));
 
 function sha1Hex(s) {
   return createHash('sha1').update(s).digest('hex');
+}
+
+async function fromCacheOrFetch(cacheKey, fetcher) {
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
+  const payload = await fetcher();
+  await setCache(cacheKey, payload);
+  return payload;
 }
 
 async function queryStationJoined(codeLc) {
@@ -233,6 +242,10 @@ router.post('/station_data.json', async (req, res) => {
     req.body.operator ??
     req.query.operator;
 
+  const cacheKey = `api:station_data:${operator ?? 'null'}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return res.json(cached);
+
   let rows;
   logger.info(`operator filter: ${operator}`);
 
@@ -274,24 +287,25 @@ router.post('/station_data.json', async (req, res) => {
     rows = [];
   }
 
-  res.json(
-    omitNil({
-      success: true,
-      info: '',
-      data: rows.map((r) =>
-        omitNil({
-          code: r.code,
-          wind_direction: r.wind_direction,
-          wind_speed: r.wind_speed,
-          temperature: r.temperature,
-          max_temp: r.max_temp,
-          min_temp: r.min_temp,
-          humidity: r.humidity,
-          update_time: r.update_time,
-        }),
-      ),
-    }),
-  );
+  const response = omitNil({
+    success: true,
+    info: '',
+    data: rows.map((r) =>
+      omitNil({
+        code: r.code,
+        wind_direction: r.wind_direction,
+        wind_speed: r.wind_speed,
+        temperature: r.temperature,
+        max_temp: r.max_temp,
+        min_temp: r.min_temp,
+        humidity: r.humidity,
+        update_time: r.update_time,
+      }),
+    ),
+  });
+
+  await setCache(cacheKey, response);
+  res.json(response);
 });
 
 router.post('/weather_stations.json', async (req, res) => {
@@ -299,6 +313,10 @@ router.post('/weather_stations.json', async (req, res) => {
     req.body.operator ??
     req.query.operator ??
     '';
+
+  const cacheKey = `api:weather_stations:${operator ?? 'null'}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return res.json(cached);
 
   let rows;
 
@@ -331,34 +349,39 @@ router.post('/weather_stations.json', async (req, res) => {
     rows = [];
   }
 
-  res.json(
-    omitNil({
-      success: true,
-      info: '',
-      data: rows.map((r) =>
-        omitNil({
-          ...r,
-          photo_2x_code: null,
-        }),
-      ),
-    }),
-  );
+  const response = omitNil({
+    success: true,
+    info: '',
+    data: rows.map((r) =>
+      omitNil({
+        ...r,
+        photo_2x_code: null,
+      }),
+    ),
+  });
+
+  await setCache(cacheKey, response);
+  res.json(response);
 });
 
 router.post('/hour_forecast.json', async (req, res) => {
+  const code = String(req.body.code ?? '').trim().toLowerCase();
+  const cacheKey = `api:hour_forecast:${code || 'all'}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return res.json(cached);
+
   try {
-    const code = req.body.code ?? '';
     const hf = await queryOne(`SELECT data FROM hour_forecasts WHERE lower(code)=lower($1)`, [code]);
     const success = !!hf;
     const dataBlob = hf?.data ?? {};
     const inner = typeof dataBlob === 'string' ? JSON.parse(dataBlob) : dataBlob;
-    res.json(
-      omitNil({
-        success,
-        info: '',
-        data: omitNil(inner),
-      }),
-    );
+    const response = omitNil({
+      success,
+      info: '',
+      data: omitNil(inner),
+    });
+    await setCache(cacheKey, response);
+    res.json(response);
   } catch (e) {
     logger.error(e);
     res.json({ success: false, info: '' });
@@ -367,11 +390,15 @@ router.post('/hour_forecast.json', async (req, res) => {
 
 router.post('/aqhi_stations.json', async (req, res) => {
   const lang = req.body.lang || 'en';
+  const cacheKey = 'api:aqhi_stations';
+  const cached = await getCache(cacheKey);
+  if (cached) return res.json(cached);
+
   const rows =
     await query(`SELECT code, lat, lng, station_type, aqhi_index, update_time, chi_name, eng_name
     FROM aqhi_stations ORDER BY eng_name`);
 
-  res.json({
+  const response = {
     success: true,
     info: '',
     data: rows.map((s) =>
@@ -386,13 +413,29 @@ router.post('/aqhi_stations.json', async (req, res) => {
         name: isEng(lang) ? s.eng_name : s.chi_name,
       }),
     ),
-  });
+  };
+
+  await setCache(cacheKey, response);
+  res.json(response);
 });
 
 router.post('/weathers.json', async (req, res) => {
   let message = '';
   try {
     const api = req.body.api ?? {};
+    const cacheKey = `api:weathers:${sha1Hex(JSON.stringify({
+      lat: Number.parseFloat(Number(api.lat ?? 22.301944).toFixed(4)),
+      lng: Number.parseFloat(Number(api.lng ?? 114.174297).toFixed(4)),
+      station_code: String(api.station_code ?? '').trim().toLowerCase(),
+      operator: api.operator ? String(api.operator).trim().toLowerCase() : '',
+      lang: api.lang ?? 'en',
+      height: Number.parseInt(api.height ?? '0', 10),
+      width: Number.parseInt(api.width ?? '0', 10),
+      flickr: ENABLE_FLICKR_PHOTO ? '1' : '0',
+    }))}`;
+    const cached = await getCache(cacheKey);
+    if (cached) return res.json(cached);
+
     let lat = api.lat ?? 22.301944;
     let lng = api.lng ?? 114.174297;
     const station_code = api.station_code;
@@ -550,7 +593,9 @@ router.post('/weathers.json', async (req, res) => {
       }
     }
 
-    res.json(omitNil({ success: true, info: message, data: omitNil(dataPayload) }));
+    const response = omitNil({ success: true, info: message, data: omitNil(dataPayload) });
+    await setCache(cacheKey, response);
+    res.json(response);
   } catch (e) {
     logger.error(e);
     res.status(500).json({ success: false, info: String(e.message ?? e), data: null });
