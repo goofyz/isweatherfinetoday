@@ -1,37 +1,45 @@
 import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
 import admin from 'firebase-admin';
-import a from '../serviceAccountKey.json' with { type: 'json' };
 import logger from './logger.js';
+
+const defaultServiceAccountPath = path.join(path.dirname(new URL(import.meta.url).pathname), '../serviceAccountKey.json');
+
+function loadServiceAccountJson() {
+  if (process.env.SERVICE_ACCOUNT_KEY) {
+    try {
+      return JSON.parse(process.env.SERVICE_ACCOUNT_KEY);
+    } catch (error) {
+      logger.warn('Failed to parse SERVICE_ACCOUNT_KEY as JSON:', error);
+      return null;
+    }
+  }
+
+  const filePath = process.env.SERVICE_ACCOUNT_KEY_PATH || defaultServiceAccountPath;
+  try {
+    const fileContents = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(fileContents);
+  } catch (error) {
+    logger.warn(`Failed to load service account JSON from ${filePath}:`, error);
+    return null;
+  }
+}
 
 // Initialize Firebase Admin SDK
 let firebaseAdminApp;
-try {
-  // Option 1: Load from service account JSON file (recommended)
-  // Place your serviceAccountKey.json in the project root or src/
-  firebaseAdminApp = admin.initializeApp({
-    credential: admin.credential.cert(a),
-  });
-} catch {
+const serviceAccount = loadServiceAccountJson();
+if (serviceAccount) {
   try {
-    // Option 2: Load from environment variables (if service account key is in env)
-    const serviceAccount = {
-      type: "service_account",
-      project_id: process.env.FIREBASE_PROJECT_ID,
-      private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-      private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      client_email: process.env.FIREBASE_CLIENT_EMAIL,
-      client_id: process.env.FIREBASE_CLIENT_ID,
-      auth_uri: "https://accounts.google.com/o/oauth2/auth",
-      token_uri: "https://oauth2.googleapis.com/token",
-      auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-      client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL,
-    };
     firebaseAdminApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
-  } catch {
-    logger.warn('Firebase Admin SDK not initialized. FCM sending will be skipped.');
+    logger.info('Firebase Admin SDK initialized successfully.');
+  } catch (error) {
+    logger.warn('Firebase Admin SDK not initialized. FCM sending will be skipped.', error);
   }
+} else {
+  logger.warn('Firebase Admin SDK not initialized. FCM sending will be skipped.');
 }
 
 export const PORT = Number(process.env.PORT || 3000);
