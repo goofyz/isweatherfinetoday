@@ -182,7 +182,7 @@ function buildWarningNode(w, lang) {
   });
 }
 
-router.post('/devices.json', async (req, res) => {
+router.post('/devices', async (req, res) => {
   const device = req.body.device ?? {};
   const pattern = `lat=${device.reg_id ?? ''}, lng=${device.type ?? ''}, v=${device.app_version ?? ''}, key=${DEVICE_SECRET_KEY}, time=${req.body.t ?? ''}`;
   const hash = sha1Hex(pattern);
