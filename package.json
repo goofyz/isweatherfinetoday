@@ -10,7 +10,7 @@
     "start": "node src/server.js",
     "scheduler": "node src/scheduler.js",
     "dev": "node --watch src/server.js",
-    "db:schema": "sh scripts/create-db-schema.sh",
+    "db:schema": "node scripts/create-db-schema.js",
     "db:seed": "node src/seed.js"
   },
   "dependencies": {
