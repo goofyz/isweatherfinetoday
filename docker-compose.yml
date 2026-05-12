@@ -29,7 +29,7 @@ services:
     environment:
       - DATABASE_URL=postgres://postgres:abcd1234@db:5432/weatherindoubt6_development
       - TZ=Asia/Hong_Kong
-      - FCM_API_KEY=AAAAtqyD6eo:APA91bHNmYeIrDWX7LJB4VXEbMx5Bqd34IRepuoY-swKlmNikG3784gAdX-9j_RaKalRvJHyhT7C0gCF-7SpTzgAjRXO4XnB3mJLiTyWE69YbrJB6Ju4AzWX2mtB327T5X5MkylA6j5B
+      - SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}
     volumes:
       - .:/app
 
