@@ -1,5 +1,6 @@
 import { query, queryOne } from '../db.js';
 import { getJson } from '../request-helper.js';
+import logger from '../logger.js';
 
 const FLICKR_API_KEY = '8edb524d5852f6db934a65305b603ebb';
 const FLICKR_API_GROUP_ID = '1463451@N25';
@@ -68,7 +69,7 @@ async function upsertFromSearchPhoto(ph) {
 }
 
 export async function runFlickrPhotoUpdater() {
-  console.log('FLICKR - start');
+  logger.info('FLICKR - start');
   const resp = await flickrMethod('flickr.photos.search', {
     group_id: FLICKR_API_GROUP_ID,
     extras: 'owner_name,url_h,tags',
@@ -79,9 +80,9 @@ export async function runFlickrPhotoUpdater() {
   });
   const photos = asArray(resp?.photos?.photo).filter(Boolean);
   for (const ph of photos) {
-    await upsertFromSearchPhoto(ph).catch((e) => console.error('flickr photo', ph?.id, e));
+    await upsertFromSearchPhoto(ph).catch((e) => logger.error('flickr photo', ph?.id, e));
   }
 
   await query(`DELETE FROM flickr_photos WHERE updated_at < NOW() - interval '10 day'`);
-  console.log('FLICKR - end');
+  logger.info('FLICKR - end');
 }

@@ -3,6 +3,7 @@ import { REGEX_SPECIAL_WEATHER_TIPS_CONTENT } from '../locales.js';
 import { query } from '../db.js';
 import { getRemotePageAsString } from '../request-helper.js';
 import { runGcmGenerator } from './gcm-generator.js';
+import logger from '../logger.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -87,7 +88,7 @@ export function tipsAreEqual(oldRows, newRows) {
 }
 
 export async function runSpecialWeatherTipUpdater() {
-  console.log('SpecialWeatherTip - start');
+  logger.info('SpecialWeatherTip - start');
   const oldTips = await query(
     'SELECT eng_title, time, eng_content, chi_title FROM special_weather_tips ORDER BY id',
   );
@@ -103,7 +104,7 @@ export async function runSpecialWeatherTipUpdater() {
 
   if (sendTip) {
     await query('DELETE FROM special_weather_tips');
-    console.log(`SpecialWeatherTips: ${normalizedNew.length}`);
+    logger.info(`SpecialWeatherTips: ${normalizedNew.length}`);
     for (const tip of normalizedNew) {
       await query(
         `INSERT INTO special_weather_tips (eng_title, chi_title, eng_content, chi_content, time,
@@ -115,5 +116,5 @@ export async function runSpecialWeatherTipUpdater() {
     await runGcmGenerator(false, true, false);
   }
 
-  console.log('SpecialWeatherTip - end');
+  logger.info('SpecialWeatherTip - end');
 }

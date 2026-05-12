@@ -2,6 +2,7 @@ import { parse } from 'csv-parse/sync';
 import { query, queryOne } from '../db.js';
 import { REGEX_STATION_DATA_TIME } from '../locales.js';
 import { getResponse } from '../request-helper.js';
+import logger from '../logger.js';
 
 function isNumber(string) {
   return !Number.isNaN(parseFloat(string));
@@ -21,7 +22,7 @@ export function handleWindDirection(wd) {
 }
 
 export async function runWeatherStationUpdater() {
-  console.log('Weather.Station - start');
+  logger.info('Weather.Station - start');
   const res = await getResponse(
     'https://www.hko.gov.hk/wxinfo/awsgis/latestReadings_AWS1_v2.txt',
   );
@@ -33,14 +34,14 @@ export async function runWeatherStationUpdater() {
   const csvText = lines.slice(1).join('\n');
   const rows = parse(csvText, { columns: true, skip_empty_lines: true, relax_column_count: true });
 
-  console.log('get station data');
+  logger.info('get station data');
   for (const hash_data of rows) {
     const stn = hash_data.STN ?? hash_data.stn;
     if (stn == null) continue;
     const code = String(stn).toLowerCase();
     const ws = await queryOne('SELECT id FROM weather_stations WHERE code = $1', [code]);
     if (!ws) {
-      console.log(`ERROR: invalid weather station code: ${code}`);
+      logger.info(`ERROR: invalid weather station code: ${code}`);
       continue;
     }
     let sd = await queryOne(
@@ -89,6 +90,6 @@ export async function runWeatherStationUpdater() {
       );
     }
   }
-  console.log('end station data');
-  console.log('Weather.Station - end');
+  logger.info('end station data');
+  logger.info('Weather.Station - end');
 }

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import admin from 'firebase-admin';
 import a from '../serviceAccountKey.json' with { type: 'json' };
+import logger from './logger.js';
 
 // Initialize Firebase Admin SDK
 let firebaseAdminApp;
@@ -29,7 +30,7 @@ try {
       credential: admin.credential.cert(serviceAccount),
     });
   } catch {
-    console.warn('Firebase Admin SDK not initialized. FCM sending will be skipped.');
+    logger.warn('Firebase Admin SDK not initialized. FCM sending will be skipped.');
   }
 }
 

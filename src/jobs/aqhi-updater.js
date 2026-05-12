@@ -4,6 +4,7 @@ import { DateTime } from 'luxon';
 import { REGEX_AQHI_CURRENT } from '../locales.js';
 import { query } from '../db.js';
 import { get } from '../request-helper.js';
+import logger from '../logger.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -61,7 +62,7 @@ function parseAqhiCurrent(htmlBlock) {
 }
 
 export async function runAqhiUpdater() {
-  console.log(`AQHI - start`);
+  logger.info(`AQHI - start`);
 
   const engXml = await get('https://www.aqhi.gov.hk/epd/ddata/html/out/aqhirss_Eng.xml');
   let doc = new DOMParser().parseFromString(engXml, 'application/xml');
@@ -112,7 +113,7 @@ export async function runAqhiUpdater() {
     ]);
     const station = stationRows[0];
     if (!station) {
-      console.log(`AQHI Station Not found ${engStationName}`);
+      logger.info(`AQHI Station Not found ${engStationName}`);
       continue;
     }
     await query(`UPDATE aqhi_stations SET aqhi_index=$1, update_time=$2, updated_at=NOW() WHERE id=$3`, [
@@ -122,5 +123,5 @@ export async function runAqhiUpdater() {
     ]);
   }
 
-  console.log(`AQHI - End`);
+  logger.info(`AQHI - End`);
 }

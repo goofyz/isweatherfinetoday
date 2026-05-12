@@ -11,6 +11,7 @@ import { sendGcmImmediate } from './jobs/gcm-sender.js';
 import { runSpecialWeatherTipUpdater } from './jobs/special-weather-tip-updater.js';
 import { runWeatherForecastUpdater } from './jobs/weather-forecast-updater.js';
 import { runWeatherStationUpdater } from './jobs/weather-station-updater.js';
+import logger from './logger.js';
 
 process.env.TZ = process.env.TZ || 'Asia/Hong_Kong';
 
@@ -19,7 +20,7 @@ function wrap(name, fn) {
     try {
       await fn();
     } catch (e) {
-      console.error(`[scheduler] ${name}`, e);
+      logger.error(`[scheduler] ${name}`, e);
     }
   };
 }
@@ -51,4 +52,4 @@ for (const m of [1, 2, 4, 6, 8, 11]) {
 
 cron.schedule('0 3 * * *', wrap('flickr', runFlickrPhotoUpdater));
 
-console.log('[scheduler] Clock started (TZ=%s)', process.env.TZ);
+logger.info('[scheduler] Clock started (TZ=%s)', process.env.TZ);

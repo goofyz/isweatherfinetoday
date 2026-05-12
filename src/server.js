@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { PORT } from './config.js';
 import v1Api from './routes/v1-api.js';
 import './scheduler.js';
+import logger from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
@@ -38,5 +39,5 @@ app.get('/terms', (_req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Listening on http://0.0.0.0:${PORT}`);
+  logger.info(`Listening on http://0.0.0.0:${PORT}`);
 });

@@ -2,11 +2,12 @@ import { DateTime } from 'luxon';
 import { query } from '../db.js';
 import { getJson } from '../request-helper.js';
 import { runGcmGenerator } from './gcm-generator.js';
+import logger from '../logger.js';
 
 const HK = 'Asia/Hong_Kong';
 
 export async function runHeatIndexUpdater() {
-  console.log('HeatIndexUpdater - start');
+  logger.info('HeatIndexUpdater - start');
 
   const json = await getJson('https://www.hko.gov.hk/wxinfo/hkhi/hkhi_icon.xml');
   const chi_title = json.TitleTC ?? '';
@@ -38,9 +39,9 @@ export async function runHeatIndexUpdater() {
   );
 
   if (changed) {
-    console.log(`HeatIndexUpdater - Changed ? ${changed}`);
+    logger.info(`HeatIndexUpdater - Changed ? ${changed}`);
     await runGcmGenerator(false, false, true);
   }
 
-  console.log('HeatIndexUpdater - End');
+  logger.info('HeatIndexUpdater - End');
 }

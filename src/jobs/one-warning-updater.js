@@ -3,6 +3,7 @@ import { query } from '../db.js';
 import { URL_WARNING_SOURCE } from '../config.js';
 import { getJson, getRemotePageAsString } from '../request-helper.js';
 import { runGcmGenerator } from './gcm-generator.js';
+import logger from '../logger.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -179,7 +180,7 @@ async function loadWarningsFromNetwork(warns) {
   const warningObjs = [];
   for (const w of warningDefs) {
     if (checkWarningUp(warns, w)) {
-      console.log(w);
+      logger.info(w);
       warningObjs.push(await createWarning(w, warns));
     }
   }
@@ -203,7 +204,7 @@ export function warningsAreEqual(oldRows, newRows) {
 }
 
 export async function runOneWarningUpdater() {
-  console.log('OneWarningUpdater - start');
+  logger.info('OneWarningUpdater - start');
   const json = await getJson(URL_WARNING_SOURCE);
   const warns = json?.DYN_DAT_WARNSUM ?? {};
 
@@ -215,7 +216,7 @@ export async function runOneWarningUpdater() {
 
   if (sendWarning) {
     await query('DELETE FROM weather_warnings');
-    console.log(`Warning - save warnings count: ${newWarnings.length}`);
+    logger.info(`Warning - save warnings count: ${newWarnings.length}`);
     for (const w of newWarnings) {
       await query(
         `INSERT INTO weather_warnings (warning_type, time, eng_detail, chi_detail, created_at, updated_at)
@@ -229,5 +230,5 @@ export async function runOneWarningUpdater() {
   if (sendTip || sendWarning) {
     await runGcmGenerator(sendWarning, sendTip, false);
   }
-  console.log('OneWarningUpdater - End');
+  logger.info('OneWarningUpdater - End');
 }

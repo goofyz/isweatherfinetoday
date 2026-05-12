@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon';
 import { query } from '../db.js';
 import { getJson } from '../request-helper.js';
+import logger from '../logger.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -8,7 +9,7 @@ const WARNING_ENG = 'http://pda.weather.gov.hk/locspc/android_data/fnd_e.xml';
 const WARNING_CHI = 'http://pda.weather.gov.hk/locspc/android_data/fnd_uc.xml';
 
 export async function runWeatherForecastUpdater() {
-  console.log('Weather.forecast - start');
+  logger.info('Weather.forecast - start');
   const eng_json = await getJson(WARNING_ENG);
   const chi_json = await getJson(WARNING_CHI);
 
@@ -100,5 +101,5 @@ export async function runWeatherForecastUpdater() {
     );
   }
 
-  console.log('Weather.forecast - end');
+  logger.info('Weather.forecast - end');
 }

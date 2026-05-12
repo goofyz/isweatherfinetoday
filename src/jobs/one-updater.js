@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import { query, queryOne } from '../db.js';
 import { getJson } from '../request-helper.js';
 import { htmlText, squish } from './html-utils.js';
+import logger from '../logger.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -48,20 +49,20 @@ async function getTyphoonIdString() {
   if (!Array.isArray(tcList) || tcList.length === 0) return '';
 
   for (const typhoon_match of tcList) {
-    console.log(`Has typhoon - ${typhoon_match.enName}`);
+    logger.info(`Has typhoon - ${typhoon_match.enName}`);
     id.push(String(typhoon_match.tcId));
 
     const existing = await queryOne('SELECT id, eng_name, chi_name, data_type FROM typhoons WHERE hko_id = $1', [
       typhoon_match.tcId,
     ]);
     await upsertTyphoonFromTc(typhoon_match);
-    if (!existing) console.log(`Insert typhoon - ${typhoon_match.enName}`);
+    if (!existing) logger.info(`Insert typhoon - ${typhoon_match.enName}`);
   }
   return id.join(',');
 }
 
 export async function runOneUpdater() {
-  console.log('OneUpdater - start');
+  logger.info('OneUpdater - start');
   const eng_json = await getJson('https://www.weather.gov.hk/wxinfo/json/one_json.xml');
   const chi_json = await getJson('https://www.weather.gov.hk/wxinfo/json/one_json_uc.xml');
 
@@ -155,5 +156,5 @@ export async function runOneUpdater() {
     ],
   );
 
-  console.log('OneUpdater - End');
+  logger.info('OneUpdater - End');
 }

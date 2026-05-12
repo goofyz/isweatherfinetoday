@@ -5,6 +5,7 @@ import weather_stations from '../db/weather_stations.json' with { type: 'json' }
 import aqhi_stations from '../db/aqhi_stations.json' with { type: 'json' };
 
 import { pool, query } from './db.js';
+import logger from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -91,14 +92,14 @@ async function main() {
   await upsertWeatherStations(weatherStations);
   await upsertAqhiStations(aqhiStations);
 
-  console.log(
+  logger.info(
     `Seeded: weather_stations=${weatherStations.length}, aqhi_stations=${aqhiStations.length}`,
   );
 }
 
 main()
   .catch((err) => {
-    console.error(err);
+    logger.error(err);
     process.exitCode = 1;
   })
   .finally(async () => {

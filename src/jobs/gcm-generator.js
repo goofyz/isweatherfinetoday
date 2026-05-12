@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { query } from '../db.js';
 import { enqueueGcmSend } from './gcm-sender.js';
+import logger from '../logger.js';
 
 const ACTIVE = 'A';
 
@@ -17,7 +18,7 @@ async function countDevices(lang) {
 }
 
 async function insertNotification(regIds, op, content, collapse_key) {
-  console.log(`FCM - insert notification for ${op} (${regIds.length} devices)`);
+  logger.info(`FCM - insert notification for ${op} (${regIds.length} devices)`);
   await query(
     `INSERT INTO gcm_notifications (reg_ids, op, content, collapse_key, target_sent_time, sent_time,
       response, message_id, sent_count, created_at, updated_at)
@@ -37,7 +38,7 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
     if (reg_ids.length === 0) continue;
 
     if (sendWarning) {
-      console.log('FCM - add warnings');
+      logger.info('FCM - add warnings');
       const warnings = await query(
         `SELECT warning_type AS "warning_type", time, eng_detail, chi_detail FROM weather_warnings`,
       );
@@ -45,13 +46,13 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
     }
 
     if (sendTips) {
-      console.log('FCM - add tips');
+      logger.info('FCM - add tips');
       const tips = await query(`SELECT eng_title, chi_title, time, eng_content, chi_content FROM special_weather_tips`);
       await insertNotification(reg_ids, 'tips', JSON.stringify(tips), 'tips');
     }
 
     if (sendHeat) {
-      console.log('FCM - add Heat Index');
+      logger.info('FCM - add Heat Index');
       const heats = await query(
         `SELECT eng_title, chi_title, eng_content, chi_content, time, warning_type FROM heat_indices`,
       );

@@ -8,6 +8,7 @@ import { distanceKm, pointInPeakPolygon } from '../geo.js';
 import { isEng, naturalNumber, omitNil, truncate, warningSortOrder, toDateStr } from '../helpers.js';
 import { FLICKR_DOWN } from '../locales.js';
 import { query, queryOne } from '../db.js';
+import logger from '../logger.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -221,7 +222,7 @@ router.post('/devices.json', async (req, res) => {
   } catch (e) {
     success = false;
     message = 'error in saving devices';
-    console.error(e);
+    logger.error(e);
   }
 
   res.json({ success, info: message });
@@ -233,7 +234,7 @@ router.post('/station_data.json', async (req, res) => {
     req.query.operator;
 
   let rows;
-  console.log(`operator filter: ${operator}`);
+  logger.info(`operator filter: ${operator}`);
 
   try {
     if (!operator || operator === '') {
@@ -269,7 +270,7 @@ router.post('/station_data.json', async (req, res) => {
       );
     }
   } catch (e) {
-    console.error(e);
+    logger.error(e);
     rows = [];
   }
 
@@ -326,7 +327,7 @@ router.post('/weather_stations.json', async (req, res) => {
       );
     }
   } catch (e) {
-    console.error(e);
+    logger.error(e);
     rows = [];
   }
 
@@ -359,7 +360,7 @@ router.post('/hour_forecast.json', async (req, res) => {
       }),
     );
   } catch (e) {
-    console.error(e);
+    logger.error(e);
     res.json({ success: false, info: '' });
   }
 });
@@ -551,7 +552,7 @@ router.post('/weathers.json', async (req, res) => {
 
     res.json(omitNil({ success: true, info: message, data: omitNil(dataPayload) }));
   } catch (e) {
-    console.error(e);
+    logger.error(e);
     res.status(500).json({ success: false, info: String(e.message ?? e), data: null });
   }
 });

@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import { query, queryOne } from '../db.js';
 import { URL_HOUR_FORECAST_SOURCE } from '../config.js';
 import { getJson } from '../request-helper.js';
+import logger from '../logger.js';
 
 const HK = 'Asia/Hong_Kong';
 const MAX_HOURS_MS = 2 * 24 * 60 * 60 * 1000;
@@ -71,7 +72,7 @@ async function updateData(code) {
   try {
     json = await fetchJsonForCode(code);
   } catch (e) {
-    console.error('hour_forecast_fetch', code, e);
+    logger.error('hour_forecast_fetch', code, e);
     return;
   }
 
@@ -98,7 +99,7 @@ async function updateData(code) {
 }
 
 export async function runHourForecastUpdater() {
-  console.log(`Weather.Hour.Forecast - start`);
+  logger.info(`Weather.Hour.Forecast - start`);
   for (const code of ALL) await updateData(code);
-  console.log(`Weather.Hour.Forecast - end`);
+  logger.info(`Weather.Hour.Forecast - end`);
 }

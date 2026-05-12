@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { firebaseApp } from '../config.js';
 import { query, queryOne } from '../db.js';
+import logger from '../logger.js';
 
 // FCM error code constants
 const FCM_ERROR_UNAVAILABLE = 'UNAVAILABLE';
@@ -26,7 +27,7 @@ async function sendFcmMulticast(regIds, payload) {
     const response = await firebaseApp.messaging().sendEachForMulticast(message);
     return response;
   } catch (error) {
-    console.error('Error sending FCM multicast:', error);
+    logger.error('Error sending FCM multicast:', error);
     throw error;
   }
 }
@@ -95,7 +96,7 @@ async function enqueueRetry(notifRow, retryIds) {
 async function parseAndHandleResults(regIds, response, originalNotifRow) {
   const retryIds = [];
   if (!response || !Array.isArray(response.responses)) {
-    console.error('Invalid FCM response structure:', response);
+    logger.error('Invalid FCM response structure:', response);
     throw new Error('Invalid FCM response structure');
   }
 
@@ -105,17 +106,17 @@ async function parseAndHandleResults(regIds, response, originalNotifRow) {
     if (!result.success) {
       const errorCode = result.error?.code;
       if (errorCode === FCM_ERROR_UNAVAILABLE || errorCode === FCM_ERROR_INTERNAL) {
-        console.log(`FCM - Unavailable, re-try later - ${regId}`);
+        logger.info(`FCM - Unavailable, re-try later - ${regId}`);
         retryIds.push(regId);
         continue;
       }
       if (errorCode === FCM_ERROR_UNREGISTERED || errorCode === FCM_ERROR_INVALID_ARGUMENT) {
-        console.log(`FCM - removed from db - ${regId}`);
+        logger.info(`FCM - removed from db - ${regId}`);
         const device = await queryOne(`SELECT id FROM devices WHERE reg_id=$1`, [regId]);
         if (device) await disableDevice(regId);
         continue;
       }
-      console.log(`FCM - unknown error ${errorCode} for ${regId}`);
+      logger.info(`FCM - unknown error ${errorCode} for ${regId}`);
     }
     // Note: Canonical IDs are not returned in FCM v1 API.
     // In FCM v1, token updates (such as when a device's registration token changes)
@@ -128,9 +129,9 @@ async function parseAndHandleResults(regIds, response, originalNotifRow) {
   }
 }
 export async function sendGcmImmediate() {
-  console.log('FCM - Start sending pending notifications');
+  logger.info('FCM - Start sending pending notifications');
   if (!firebaseApp) {
-    console.log('FCM - skip (Firebase Admin SDK not initialized)');
+    logger.info('FCM - skip (Firebase Admin SDK not initialized)');
     return;
   }
 
@@ -141,12 +142,12 @@ export async function sendGcmImmediate() {
   );
 
   for (const notif of pending) {
-    console.log(`FCM - send notification ID ${notif.id}`);
+    logger.info(`FCM - send notification ID ${notif.id}`);
     let regIds;
     try {
       regIds = JSON.parse(notif.reg_ids);
     } catch {
-      console.log(`FCM - skip bad reg_ids (${notif.id})`);
+      logger.info(`FCM - skip bad reg_ids (${notif.id})`);
       continue;
     }
 
@@ -174,18 +175,18 @@ export async function sendGcmImmediate() {
           }))
         })],
       );
-      console.log(`FCM - result for notification ID ${notif.id}: ${response.successCount} success, ${response.failureCount} failure`);
+      logger.info(`FCM - result for notification ID ${notif.id}: ${response.successCount} success, ${response.failureCount} failure`);
 
       await parseAndHandleResults(regIds, response, notif);
     } catch (error) {
-      console.log('FCM - error sending multicast', error);
+      logger.info('FCM - error sending multicast', error);
       await query(
         `UPDATE gcm_notifications SET sent_time=NOW(), response=$2, updated_at=NOW() WHERE id=$1`,
         [notif.id, JSON.stringify({ error: error.message })],
       );
     }
   }
-  console.log('FCM - Finished sending pending notifications');
+  logger.info('FCM - Finished sending pending notifications');
 }
 
 export async function enqueueGcmSend() {
