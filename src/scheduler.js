@@ -30,18 +30,18 @@ cron.schedule('* * * * *', wrap('warnings', runOneWarningUpdater));
 cron.schedule('* * * * *', wrap('special_tips', runSpecialWeatherTipUpdater));
 
 cron.schedule('*/2 * * * *', wrap('weather_stations', runWeatherStationUpdater));
-cron.schedule('*/2 * * * *', wrap('community_stations', runCommunityStationUpdater));
+cron.schedule('*/3 * * * *', wrap('community_stations', runCommunityStationUpdater));
 
 cron.schedule('*/10 * * * *', wrap('one_updater', runOneUpdater));
 
 cron.schedule('*/12 * * * *', wrap('aqhi', runAqhiUpdater));
-cron.schedule('*/12 * * * *', wrap('heat_index', runHeatIndexUpdater));
+cron.schedule('*/13 * * * *', wrap('heat_index', runHeatIndexUpdater));
 
-cron.schedule('*/1 * * * *', wrap('hour_forecast', runHourForecastUpdater));
+cron.schedule('*/20 * * * *', wrap('hour_forecast', runHourForecastUpdater));
 
 cron.schedule('*/30 * * * *', wrap('weather_forecast', runWeatherForecastUpdater));
 
-cron.schedule('11 * * * *', wrap('weather_forecast_11', runWeatherForecastUpdater));
+cron.schedule('10 11 * * *', wrap('weather_forecast_11', runWeatherForecastUpdater));
 
 for (const m of [1, 2, 4, 6, 8, 11]) {
   cron.schedule(`${m} 0 * * *`, wrap(`midnight_bundle_${m}`, async () => {
