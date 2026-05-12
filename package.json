@@ -1,0 +1,28 @@
+{
+  "name": "weatherindoubt",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "scheduler": "node src/scheduler.js",
+    "dev": "node --watch src/server.js",
+    "db:schema": "sh scripts/create-db-schema.sh",
+    "db:seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.6",
+    "cheerio": "^1.0.0",
+    "csv-parse": "^5.6.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "firebase-admin": "^13.9.0",
+    "luxon": "^3.5.0",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1",
+    "xpath": "^0.0.34"
+  }
+}

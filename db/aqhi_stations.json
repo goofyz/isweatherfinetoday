@@ -1,0 +1,146 @@
+[
+    {
+        "code": "g_cw",
+        "chi_name": "中西區",
+        "eng_name": "Central/Western",
+        "lat": "22.28489",
+        "lng": "114.14407",
+        "station_type": "G"
+    },
+    {
+        "code": "g_s",
+        "chi_name": "南區",
+        "eng_name": "Southern",
+        "lat": "22.248188",
+        "lng": "114.159336",
+        "station_type": "G"
+    },
+    {
+        "code": "g_e",
+        "chi_name": "東區",
+        "eng_name": "Eastern",
+        "lat": "22.28290",
+        "lng": "114.21937",
+        "station_type": "G"
+    },
+    {
+        "code": "g_kt",
+        "chi_name": "觀塘",
+        "eng_name": "Kwun Tong",
+        "lat": "22.31340",
+        "lng": "114.22477",
+        "station_type": "G"
+    },
+    {
+        "code": "g_ssp",
+        "chi_name": "深水埗",
+        "eng_name": "Sham Shui Po",
+        "lat": "22.33011",
+        "lng": "114.15886",
+        "station_type": "G"
+    },
+    {
+        "code": "g_kc",
+        "chi_name": "葵涌",
+        "eng_name": "Kwai Chung",
+        "lat": "22.35685",
+        "lng": "114.12948",
+        "station_type": "G"
+    },
+    {
+        "code": "g_tw",
+        "chi_name": "荃灣",
+        "eng_name": "Tsuen Wan",
+        "lat": "22.37170",
+        "lng": "114.11444",
+        "station_type": "G"
+    },
+    {
+        "code": "g_tko",
+        "chi_name": "將軍澳",
+        "eng_name": "Tseung Kwan O",
+        "lat": "22.317633",
+        "lng": "114.259597",
+        "station_type": "G"
+    },
+    {
+        "code": "g_yl",
+        "chi_name": "元朗",
+        "eng_name": "Yuen Long",
+        "lat": "22.44510",
+        "lng": "114.02278",
+        "station_type": "G"
+    },
+    {
+        "code": "g_tm",
+        "chi_name": "屯門",
+        "eng_name": "Tuen Mun",
+        "lat": "22.39117",
+        "lng": "113.97678",
+        "station_type": "G"
+    },
+    {
+        "code": "g_tc",
+        "chi_name": "東涌",
+        "eng_name": "Tung Chung",
+        "lat": "22.28897",
+        "lng": "113.94347",
+        "station_type": "G"
+    },
+    {
+        "code": "g_tp",
+        "chi_name": "大埔",
+        "eng_name": "Tai Po",
+        "lat": "22.450980",
+        "lng": "114.164157",
+        "station_type": "G"
+    },
+    {
+        "code": "g_st",
+        "chi_name": "沙田",
+        "eng_name": "Sha Tin",
+        "lat": "22.376515",
+        "lng": "114.184743",
+        "station_type": "G"
+    },
+    {
+        "code": "g_n",
+        "chi_name": "北區",
+        "eng_name": "North",
+        "lat": "22.4964171",
+        "lng": "114.1281267",
+        "station_type": "G"
+    },
+    {
+        "code": "g_tapmun",
+        "chi_name": "塔門",
+        "eng_name": "Tap Mun",
+        "lat": "22.471243",
+        "lng": "114.3605809",
+        "station_type": "G"
+    },
+    {
+        "code": "r_cwb",
+        "chi_name": "銅鑼灣",
+        "eng_name": "Causeway Bay",
+        "lat": "22.280020",
+        "lng": "114.185349",
+        "station_type": "R"
+    },
+    {
+        "code": "r_c",
+        "chi_name": "中環",
+        "eng_name": "Central",
+        "lat": "22.281988",
+        "lng": "114.157854",
+        "station_type": "R"
+    },
+    {
+        "code": "r_mk",
+        "chi_name": "旺角",
+        "eng_name": "Mong Kok",
+        "lat": "22.322103",
+        "lng": "114.168728",
+        "station_type": "R"
+    }
+]
