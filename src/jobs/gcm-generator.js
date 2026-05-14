@@ -46,9 +46,14 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
     }
 
     if (sendTips) {
-      logger.info('FCM - add tips');
-      const tips = await query(`SELECT eng_title, chi_title, time, eng_content, chi_content FROM special_weather_tips`);
-      await insertNotification(reg_ids, 'tips', JSON.stringify(tips), 'tips');
+      logger.info(`FCM - add tips - ${lang}`);
+      if(lang == 'en') {
+        const tips = await query(`SELECT eng_title as "title", time, eng_content as "content" FROM special_weather_tips`);
+        await insertNotification(reg_ids, 'tips', JSON.stringify(tips), 'tips');
+      } else {
+        const tips = await query(`SELECT chi_title as "title", time, chi_content as "content" FROM special_weather_tips`);
+        await insertNotification(reg_ids, 'tips', JSON.stringify(tips), 'tips');
+      }
     }
 
     if (sendHeat) {
