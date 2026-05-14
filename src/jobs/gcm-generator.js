@@ -27,6 +27,12 @@ async function insertNotification(regIds, op, content, collapse_key) {
   );
 }
 
+function getLangPrefix(lang) {
+  if (lang === 'en') return 'eng';
+  if (lang === 'zh') return 'chi';
+  return '';
+}
+
 async function addMsg(sendWarning, sendTips, sendHeat, lang) {
   const cnt = await countDevices(lang);
   for (let n = 0; n <= cnt; n += 1000) {
@@ -40,26 +46,21 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
     if (sendWarning) {
       logger.info('FCM - add warnings');
       const warnings = await query(
-        `SELECT warning_type AS "warning_type", time, eng_detail, chi_detail FROM weather_warnings`,
+        `SELECT warning_type AS "warning_type", time, ${getLangPrefix(lang)}_detail as detail FROM weather_warnings`,
       );
       await insertNotification(reg_ids, 'warn', JSON.stringify(warnings), 'warnings');
     }
 
     if (sendTips) {
       logger.info(`FCM - add tips - ${lang}`);
-      if(lang == 'en') {
-        const tips = await query(`SELECT eng_title as "title", time, eng_content as "content" FROM special_weather_tips`);
-        await insertNotification(reg_ids, 'tips', JSON.stringify(tips), 'tips');
-      } else {
-        const tips = await query(`SELECT chi_title as "title", time, chi_content as "content" FROM special_weather_tips`);
-        await insertNotification(reg_ids, 'tips', JSON.stringify(tips), 'tips');
-      }
+      const tips = await query(`SELECT ${getLangPrefix(lang)}_title as "title", time, ${getLangPrefix(lang)}_content as "content" FROM special_weather_tips`);
+      await insertNotification(reg_ids, 'tips', JSON.stringify(tips), 'tips');
     }
 
     if (sendHeat) {
       logger.info('FCM - add Heat Index');
       const heats = await query(
-        `SELECT eng_title, chi_title, eng_content, chi_content, time, warning_type FROM heat_indices`,
+        `SELECT ${getLangPrefix(lang)}_title, ${getLangPrefix(lang)}_content, time, warning_type FROM heat_indices`,
       );
       await insertNotification(reg_ids, 'tips', JSON.stringify(heats), 'heat');
     }
