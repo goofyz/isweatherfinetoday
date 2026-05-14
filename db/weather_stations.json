@@ -836,5 +836,31 @@
             "photo_code": null,
             "station_operator": null,
             "is_forecast": false
+        },
+        {
+            "code": "brc",
+            "chi_name": "雙魚河",
+            "eng_name": "Beas River",
+            "lat": "22.49305556",
+            "lng": "114.10500000",
+            "webcam_angle": 0,
+            "chi_name_abbr": null,
+            "eng_name_abbr": null,
+            "photo_code": null,
+            "station_operator": null,
+            "is_forecast": false
+        }, 
+        {
+            "code": "zcp",
+            "chi_name": "九龍灣",
+            "eng_name": "Kowloon Bay",
+            "lat": "22.320833",
+            "lng": "114.208333",
+            "webcam_angle": 0,
+            "chi_name_abbr": null,
+            "eng_name_abbr": null,
+            "photo_code": null,
+            "station_operator": null,
+            "is_forecast": false
         }
     ]
