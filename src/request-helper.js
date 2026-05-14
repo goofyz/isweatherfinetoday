@@ -50,11 +50,18 @@ function requestRaw(urlString, { method = 'GET', body, headers = {} } = {}) {
 
 export async function get(url) {
   const res = await requestRaw(url);
+  if (res.statusCode < 200 || res.statusCode >= 300) {
+    throw new Error(`Request failed with status ${res.statusCode}`);
+  }
   return res.body;
 }
 
 export async function getResponse(url) {
-  return requestRaw(url);
+  const res = await requestRaw(url);
+  if (res.statusCode < 200 || res.statusCode >= 300) {
+    throw new Error(`Request failed with status ${res.statusCode}`);
+  }
+  return res;
 }
 
 export async function getJson(url) {
@@ -64,6 +71,8 @@ export async function getJson(url) {
 
 export async function getRemotePageAsString(url) {
   const res = await requestRaw(url);
-  if (res.statusCode === 200) return res.body;
-  return '';
+  if (res.statusCode !== 200) {
+    throw new Error(`Request failed with status ${res.statusCode}`);
+  }
+  return res.body;
 }

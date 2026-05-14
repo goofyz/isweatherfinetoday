@@ -92,28 +92,34 @@ export async function runSpecialWeatherTipUpdater() {
   const oldTips = await query(
     'SELECT eng_title, time, eng_content, chi_title FROM special_weather_tips ORDER BY id',
   );
-  const newTipsRaw = await getAllTips();
 
-  const normalizedOld = oldTips.map((r) => ({
-    ...r,
-    time: r.time instanceof Date ? r.time : new Date(r.time),
-  }));
-  const normalizedNew = newTipsRaw.map((r) => ({ ...r, time: r.time }));
+  try {
+    const newTipsRaw = await getAllTips();
 
-  const sendTip = !tipsAreEqual(normalizedOld, normalizedNew);
+    const normalizedOld = oldTips.map((r) => ({
+      ...r,
+      time: r.time instanceof Date ? r.time : new Date(r.time),
+    }));
+    const normalizedNew = newTipsRaw.map((r) => ({ ...r, time: r.time }));
 
-  if (sendTip) {
-    await query('DELETE FROM special_weather_tips');
-    logger.info(`SpecialWeatherTips: ${normalizedNew.length}`);
-    for (const tip of normalizedNew) {
-      await query(
-        `INSERT INTO special_weather_tips (eng_title, chi_title, eng_content, chi_content, time,
-          created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,NOW(),NOW())`,
-        [tip.eng_title, tip.chi_title, tip.eng_content, tip.chi_content, tip.time],
-      );
+    const sendTip = !tipsAreEqual(normalizedOld, normalizedNew);
+
+    if (sendTip) {
+      await query('DELETE FROM special_weather_tips');
+      logger.info(`SpecialWeatherTips: ${normalizedNew.length}`);
+      for (const tip of normalizedNew) {
+        await query(
+          `INSERT INTO special_weather_tips (eng_title, chi_title, eng_content, chi_content, time,
+            created_at, updated_at)
+          VALUES ($1,$2,$3,$4,$5,NOW(),NOW())`,
+          [tip.eng_title, tip.chi_title, tip.eng_content, tip.chi_content, tip.time],
+        );
+      }
+      await runGcmGenerator(false, true, false);
     }
-    await runGcmGenerator(false, true, false);
+  }
+  catch (e) {
+    logger.info('SpecialWeatherTip - error fetching/parsing tips', e);
   }
 
   logger.info('SpecialWeatherTip - end');

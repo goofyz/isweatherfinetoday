@@ -150,17 +150,21 @@ function parseIssueDateTime(dateStr, timeRaw) {
 }
 
 async function createWarning(warning_type, warns) {
-  const warnJson = warns[`${warning_type}_E`];
-  const wt = decodeWarning(warnJson);
-  const link = warning_type === 'WTCSGNL' ? 'wtc' : warning_type.toLowerCase();
-  const time = parseIssueDateTime(warnJson.Issue_Date, warnJson.Issue_Time);
-  const detail = await fetchDetail(link);
-  return {
-    warning_type: wt,
-    time,
-    chi_detail: detail.chi_detail,
-    eng_detail: detail.eng_detail,
-  };
+  try {
+    const warnJson = warns[`${warning_type}_E`];
+    const wt = decodeWarning(warnJson);
+    const link = warning_type === 'WTCSGNL' ? 'wtc' : warning_type.toLowerCase();
+    const time = parseIssueDateTime(warnJson.Issue_Date, warnJson.Issue_Time);
+    const detail = await fetchDetail(link);
+    return {
+      warning_type: wt,
+      time,
+      chi_detail: detail.chi_detail,
+      eng_detail: detail.eng_detail,
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 async function loadWarningsFromNetwork(warns) {
@@ -181,7 +185,8 @@ async function loadWarningsFromNetwork(warns) {
   for (const w of warningDefs) {
     if (checkWarningUp(warns, w)) {
       logger.info(w);
-      warningObjs.push(await createWarning(w, warns));
+      const warning = await createWarning(w, warns);
+      if (warning) warningObjs.push(warning);
     }
   }
   return warningObjs;
@@ -205,25 +210,31 @@ export function warningsAreEqual(oldRows, newRows) {
 
 export async function runOneWarningUpdater() {
   logger.info('OneWarningUpdater - start');
-  const json = await getJson(URL_WARNING_SOURCE);
-  const warns = json?.DYN_DAT_WARNSUM ?? {};
+  let sendWarning = false;
+  try {
+    const json = await getJson(URL_WARNING_SOURCE);
+    const warns = json?.DYN_DAT_WARNSUM ?? {};
 
-  const oldWarnings = await query(
-    'SELECT warning_type, time, eng_detail, chi_detail FROM weather_warnings ORDER BY id',
-  );
-  const newWarnings = await loadWarningsFromNetwork(warns);
-  const sendWarning = !warningsAreEqual(oldWarnings, newWarnings);
+    const oldWarnings = await query(
+      'SELECT warning_type, time, eng_detail, chi_detail FROM weather_warnings ORDER BY id',
+    );
+    const newWarnings = await loadWarningsFromNetwork(warns);
+    sendWarning = !warningsAreEqual(oldWarnings, newWarnings);
 
-  if (sendWarning) {
-    await query('DELETE FROM weather_warnings');
-    logger.info(`Warning - save warnings count: ${newWarnings.length}`);
-    for (const w of newWarnings) {
-      await query(
-        `INSERT INTO weather_warnings (warning_type, time, eng_detail, chi_detail, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,NOW(),NOW())`,
-        [w.warning_type, w.time, w.eng_detail, w.chi_detail],
-      );
+    if (sendWarning) {
+      await query('DELETE FROM weather_warnings');
+      logger.info(`Warning - save warnings count: ${newWarnings.length}`);
+      for (const w of newWarnings) {
+        await query(
+          `INSERT INTO weather_warnings (warning_type, time, eng_detail, chi_detail, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,NOW(),NOW())`,
+          [w.warning_type, w.time, w.eng_detail, w.chi_detail],
+        );
+      }
     }
+  } catch (e) {
+    // do nothing
+    logger.info('OneWarningUpdater - error fetching/parsing warnings', e);
   }
 
   const sendTip = false;
