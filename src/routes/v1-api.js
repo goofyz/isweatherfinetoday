@@ -560,7 +560,7 @@ router.post('/weathers.json', async (req, res) => {
           name: isEng(lang) ? t.eng_name : t.chi_name,
         }),
       ),
-      special_weather_tip: tipsRows.map((t) =>
+      special_weather_tips: tipsRows.map((t) =>
         omitNil({
           time: t.time instanceof Date ? t.time.toISOString() : t.time,
           title: isEng(lang) ? t.eng_title : t.chi_title,
