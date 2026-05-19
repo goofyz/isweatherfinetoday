@@ -243,30 +243,53 @@ router.post('/devices', async (req, res) => {
     typeof req.body.hash === 'string' &&
     hash.localeCompare(req.body.hash, undefined, { sensitivity: 'accent' }) === 0;
 
+  let dbParams;
   try {
     let row = await queryOne(`SELECT * FROM devices WHERE reg_id=$1`, [device.reg_id]);
     const remoteIp =
       req.headers['x-forwarded-for']?.split(',')[0]?.trim() ??
       req.socket.remoteAddress ??
       '';
+    const appVersion = Number(device.app_version);
+    const appVersionOrZero = Number.isNaN(appVersion) ? 0 : appVersion;
 
     if (!row) {
+      dbParams = {
+        reg_id: device.reg_id,
+        os_type: String(device.os_type ?? ''),
+        app_version: appVersionOrZero,
+        lang: device.lang,
+        ip_address: remoteIp,
+      };
       await query(
         `INSERT INTO devices (reg_id, os_type, app_version, lang, ip_address, status, created_at, updated_at)
          VALUES ($1,$2,$3,$4,$5,'A',NOW(),NOW())`,
         [
-          device.reg_id,
-          String(device.os_type ?? ''),
-          Number(device.app_version),
-          device.lang,
-          remoteIp,
+          dbParams.reg_id,
+          dbParams.os_type,
+          dbParams.app_version,
+          dbParams.lang,
+          dbParams.ip_address,
         ],
       );
     } else {
+      dbParams = {
+        ip_address: remoteIp,
+        os_type: String(device.os_type ?? ''),
+        app_version: appVersionOrZero,
+        lang: device.lang,
+        id: row.id,
+      };
       await query(
         `UPDATE devices SET ip_address=$1, os_type=$2, app_version=$3, lang=$4,
           status='A', updated_at=NOW() WHERE id=$5`,
-        [remoteIp, String(device.os_type ?? ''), Number(device.app_version), device.lang, row.id],
+        [
+          dbParams.ip_address,
+          dbParams.os_type,
+          dbParams.app_version,
+          dbParams.lang,
+          dbParams.id,
+        ],
       );
     }
 
@@ -277,7 +300,7 @@ router.post('/devices', async (req, res) => {
   } catch (e) {
     success = false;
     message = 'error in saving devices';
-    logger.error(e);
+    logger.error({ err: e, params: dbParams, device }, 'error in saving devices');
   }
 
   res.json({ success, info: message });
