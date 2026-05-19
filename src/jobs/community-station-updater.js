@@ -1,9 +1,8 @@
 import { DateTime } from 'luxon';
-import { queryOne } from '../db.js';
 import { getJson } from '../request-helper.js';
 import { handleTemperature, handleWindDirection } from './weather-station-updater.js';
 import logger from '../logger.js';
-import { setStationData } from '../redis-client.js';
+import { getWeatherStation, setStationData, setWeatherStation } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -22,26 +21,21 @@ export async function runCommunityStationUpdater() {
 
   for (const station of json) {
     const code = `co_${station.station}`;
-    let ws = await queryOne('SELECT id FROM weather_stations WHERE code = $1', [code]);
+    let ws = await getWeatherStation(code);
 
     if (!ws) {
       logger.info(`ERROR: invalid weather station code: ${station.station}`);
-      const ins = await queryOne(
-        `INSERT INTO weather_stations (code, chi_name, eng_name, chi_name_abbr, eng_name_abbr, lat, lng,
-          station_operator, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW()) RETURNING id`,
-        [
-          code,
-          station.mc_name,
-          station.me_name,
-          station.mc_name,
-          station.me_name,
-          station.lat,
-          station.lon,
-          'cowin',
-        ],
-      );
-      ws = ins;
+      ws = await setWeatherStation({
+        code,
+        chi_name: station.mc_name,
+        eng_name: station.me_name,
+        chi_name_abbr: station.mc_name,
+        eng_name_abbr: station.me_name,
+        lat: station.lat,
+        lng: station.lon,
+        station_operator: 'cowin',
+        is_forecast: false,
+      });
       logger.info(`createing Community Station ${station.station}`);
     }
 

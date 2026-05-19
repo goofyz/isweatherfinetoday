@@ -2,10 +2,9 @@ import * as xpath from 'xpath';
 import { DOMParser } from '@xmldom/xmldom';
 import { DateTime } from 'luxon';
 import { REGEX_AQHI_CURRENT } from '../locales.js';
-import { query } from '../db.js';
 import { get } from '../request-helper.js';
 import logger from '../logger.js';
-import { mergeToday, setAqhiStationData } from '../redis-client.js';
+import { getAllAqhiStations, mergeToday, setAqhiStationData } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -94,6 +93,12 @@ export async function runAqhiUpdater() {
   const items = xpath.select("//item", rssDoc);
   const list = Array.isArray(items) ? items : [items];
 
+  const aqhiStationsMap = await getAllAqhiStations();
+  const stationsByEngName = new Map();
+  for (const s of aqhiStationsMap.values()) {
+    if (s?.eng_name) stationsByEngName.set(String(s.eng_name), s);
+  }
+
   for (const item of list.filter(Boolean)) {
     const title = itemText(item, 'title');
     const pubRaw = itemText(item, 'pubDate');
@@ -104,10 +109,7 @@ export async function runAqhiUpdater() {
     if (parts.length < 2) continue;
     const engStationName = parts[0].split(/ - /)[0];
     const indexRaw = parts[1].split(' ')[0];
-    const stationRows = await query(`SELECT code FROM aqhi_stations WHERE eng_name = $1 LIMIT 1`, [
-      engStationName,
-    ]);
-    const station = stationRows[0];
+    const station = stationsByEngName.get(engStationName);
     if (!station) {
       logger.info(`AQHI Station Not found ${engStationName}`);
       continue;

@@ -2,10 +2,12 @@ import path from 'path';
 import express from 'express';
 import { fileURLToPath } from 'url';
 
+import weather_stations from '../db/weather_stations.json' with { type: 'json' };
+import aqhi_stations from '../db/aqhi_stations.json' with { type: 'json' };
+
 import { PORT } from './config.js';
 import v1Api from './routes/v1-api.js';
-import { connectRedis } from './redis-client.js';
-import './scheduler.js';
+import { connectRedis, loadAqhiStations, loadWeatherStations } from './redis-client.js';
 import logger from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +26,14 @@ app.get('/health', (_req, res) => {
 app.use('/api/v1', v1Api);
 
 await connectRedis();
+
+await loadWeatherStations(weather_stations);
+await loadAqhiStations(aqhi_stations);
+logger.info(
+  `Loaded into Redis: weather_stations=${weather_stations.length}, aqhi_stations=${aqhi_stations.length}`,
+);
+
+await import('./scheduler.js');
 
 app.get('/', (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));

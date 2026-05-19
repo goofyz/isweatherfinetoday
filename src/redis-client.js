@@ -108,6 +108,8 @@ const HEAT_INDEX_KEY = 'weather:heat_index';
 const AQHI_DATA_KEY = 'weather:aqhi_data';
 const FORECASTS_KEY = 'weather:forecasts';
 const FLICKR_PHOTOS_KEY = 'weather:flickr_photos';
+const WEATHER_STATIONS_KEY = 'weather:weather_stations';
+const AQHI_STATIONS_KEY = 'weather:aqhi_stations';
 
 async function getJsonKey(key) {
   if (!redisClient) return null;
@@ -293,5 +295,80 @@ export async function deleteFlickrPhoto(photoId) {
     await redisClient.hDel(FLICKR_PHOTOS_KEY, String(photoId));
   } catch (error) {
     logger.warn(`Redis hDel flickr_photos/${photoId} failed:`, error);
+  }
+}
+
+function normalizeWeatherStation(raw) {
+  return {
+    code: String(raw.code).toLowerCase(),
+    chi_name: raw.chi_name ?? null,
+    eng_name: raw.eng_name ?? null,
+    lat: raw.lat ?? null,
+    lng: raw.lng ?? null,
+    wind_lat: raw.wind_lat ?? null,
+    wind_lng: raw.wind_lng ?? null,
+    webcam_angle: raw.webcam_angle ?? null,
+    chi_name_abbr: raw.chi_name_abbr ?? null,
+    eng_name_abbr: raw.eng_name_abbr ?? null,
+    station_operator: raw.station_operator ?? null,
+    photo_code: raw.photo_code ?? null,
+    is_forecast: raw.is_forecast ?? false,
+  };
+}
+
+function normalizeAqhiStation(raw) {
+  return {
+    code: String(raw.code),
+    chi_name: raw.chi_name ?? null,
+    eng_name: raw.eng_name ?? null,
+    lat: raw.lat ?? null,
+    lng: raw.lng ?? null,
+    station_type: raw.station_type ?? null,
+  };
+}
+
+export async function setWeatherStation(station) {
+  const normalized = normalizeWeatherStation(station);
+  await hSetJson(WEATHER_STATIONS_KEY, normalized.code, normalized);
+  return normalized;
+}
+
+export async function getWeatherStation(code) {
+  if (code == null) return null;
+  return hGetJson(WEATHER_STATIONS_KEY, String(code).toLowerCase());
+}
+
+export async function getAllWeatherStations() {
+  return hGetAllJson(WEATHER_STATIONS_KEY);
+}
+
+export async function loadWeatherStations(stations) {
+  if (!redisClient || !Array.isArray(stations)) return;
+  for (const s of stations) {
+    if (!s?.code) continue;
+    await setWeatherStation(s);
+  }
+}
+
+export async function setAqhiStation(station) {
+  const normalized = normalizeAqhiStation(station);
+  await hSetJson(AQHI_STATIONS_KEY, normalized.code, normalized);
+  return normalized;
+}
+
+export async function getAqhiStation(code) {
+  if (code == null) return null;
+  return hGetJson(AQHI_STATIONS_KEY, String(code));
+}
+
+export async function getAllAqhiStations() {
+  return hGetAllJson(AQHI_STATIONS_KEY);
+}
+
+export async function loadAqhiStations(stations) {
+  if (!redisClient || !Array.isArray(stations)) return;
+  for (const s of stations) {
+    if (!s?.code) continue;
+    await setAqhiStation(s);
   }
 }

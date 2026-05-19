@@ -11,9 +11,11 @@ import { query, queryOne } from '../db.js';
 import logger from '../logger.js';
 import {
   getAllAqhiStationData,
+  getAllAqhiStations,
   getAllFlickrPhotos,
   getAllForecasts,
   getAllStationData,
+  getAllWeatherStations,
   getCache,
   getHeatIndex,
   getHourForecast,
@@ -22,6 +24,7 @@ import {
   getToday,
   getTyphoons,
   getWarnings,
+  getWeatherStation,
   setCache,
 } from '../redis-client.js';
 
@@ -45,7 +48,6 @@ async function fromCacheOrFetch(cacheKey, fetcher) {
 
 function mergeStationRow(ws, sd) {
   return {
-    ws_id: ws.ws_id,
     code: ws.code,
     chi_name: ws.chi_name,
     eng_name: ws.eng_name,
@@ -59,7 +61,6 @@ function mergeStationRow(ws, sd) {
     station_operator: ws.station_operator,
     photo_code: ws.photo_code,
     is_forecast: ws.is_forecast,
-    sd_id: null,
     wind_direction: sd?.wind_direction ?? null,
     wind_speed: sd?.wind_speed ?? null,
     temperature: sd?.temperature ?? null,
@@ -71,37 +72,24 @@ function mergeStationRow(ws, sd) {
   };
 }
 
-async function queryStationJoined(codeLc) {
-  const ws = await queryOne(
-    `SELECT id AS ws_id, code, chi_name, eng_name, lat, lng, wind_lat, wind_lng,
-      webcam_angle, chi_name_abbr, eng_name_abbr, station_operator, photo_code, is_forecast
-     FROM weather_stations
-     WHERE lower(code) = lower($1)`,
-    [codeLc],
-  );
+async function loadStationJoined(codeLc) {
+  const ws = await getWeatherStation(codeLc);
   if (!ws) return null;
   const sd = await getStationData(ws.code);
   return mergeStationRow(ws, sd);
 }
 
-async function findNearestWeatherStation(lat, lng, operator) {
-  const params = [];
-  let filt = '';
-  if (operator === 'all') filt = '';
-  else if (!operator || operator === '') filt = 'AND station_operator IS NULL';
-  else {
-    filt = `AND station_operator = $${params.length + 1}`;
-    params.push(operator);
+function filterStationsByOperator(stations, operator) {
+  if (operator === 'all') return stations;
+  if (!operator || operator === '') {
+    return stations.filter((s) => s.station_operator == null);
   }
+  return stations.filter((s) => s.station_operator === operator);
+}
 
-  const sql = `
-    SELECT id AS ws_id, code, chi_name, eng_name, lat, lng,
-      wind_lat, wind_lng, webcam_angle, chi_name_abbr, eng_name_abbr,
-      station_operator, photo_code, is_forecast
-    FROM weather_stations
-    WHERE 1=1 ${filt}
-  `;
-  const stations = await query(sql, params);
+async function findNearestWeatherStation(lat, lng, operator) {
+  const stationsMap = await getAllWeatherStations();
+  const stations = filterStationsByOperator([...stationsMap.values()], operator);
   const dataMap = await getAllStationData();
 
   const rows = [];
@@ -139,8 +127,8 @@ async function findNearestWeatherStation(lat, lng, operator) {
 async function findWeatherStation(lat, lng, station_code, operator) {
   if (!station_code || String(station_code).trim() === '') return findNearestWeatherStation(lat, lng, operator);
 
-  let row = await queryStationJoined(String(station_code).trim().toLowerCase());
-  if (!row) row = await queryStationJoined('hko');
+  let row = await loadStationJoined(String(station_code).trim().toLowerCase());
+  if (!row) row = await loadStationJoined('hko');
   if (!row) return findNearestWeatherStation(lat, lng, operator);
 
   const tempNum = row.temperature == null ? NaN : Number(row.temperature);
@@ -166,9 +154,11 @@ function mergeAqhiStation(meta, dyn) {
 }
 
 async function findNearestAqhi(lat, lng) {
-  const stations = await query(`SELECT * FROM aqhi_stations`);
+  const stationsMap = await getAllAqhiStations();
   const aqhiMap = await getAllAqhiStationData();
-  const rows = stations.map((s) => mergeAqhiStation(s, aqhiMap.get(String(s.code))));
+  const rows = [...stationsMap.values()].map((s) =>
+    mergeAqhiStation(s, aqhiMap.get(String(s.code))),
+  );
 
   rows.sort(
     (a, b) =>
@@ -306,19 +296,8 @@ router.post('/station_data.json', async (req, res) => {
   logger.info(`operator filter: ${operator}`);
 
   try {
-    let stations;
-    if (!operator || operator === '') {
-      stations = await query(
-        `SELECT code FROM weather_stations WHERE station_operator IS NULL`,
-      );
-    } else if (operator === 'all') {
-      stations = await query(`SELECT code FROM weather_stations`);
-    } else {
-      stations = await query(
-        `SELECT code FROM weather_stations WHERE station_operator = $1`,
-        [operator],
-      );
-    }
+    const stationsMap = await getAllWeatherStations();
+    const stations = filterStationsByOperator([...stationsMap.values()], operator);
 
     const dataMap = await getAllStationData();
     const freshCutoffMs = Date.now() - 3 * 3600 * 1000;
@@ -381,29 +360,10 @@ router.post('/weather_stations.json', async (req, res) => {
   let rows;
 
   try {
-    if (!operator || String(operator).trim() === '') {
-      rows = await query(
-        `SELECT code, chi_name, eng_name, lat, lng, wind_lat, wind_lng,
-          webcam_angle, chi_name_abbr, eng_name_abbr, station_operator,
-          photo_code, is_forecast
-         FROM weather_stations WHERE station_operator IS NULL ORDER BY eng_name`,
-      );
-    } else if (operator === 'all') {
-      rows = await query(
-        `SELECT code, chi_name, eng_name, lat, lng, wind_lat, wind_lng,
-          webcam_angle, chi_name_abbr, eng_name_abbr, station_operator,
-          photo_code, is_forecast
-         FROM weather_stations ORDER BY eng_name`,
-      );
-    } else {
-      rows = await query(
-        `SELECT code, chi_name, eng_name, lat, lng, wind_lat, wind_lng,
-          webcam_angle, chi_name_abbr, eng_name_abbr, station_operator,
-          photo_code, is_forecast
-         FROM weather_stations WHERE station_operator = $1 ORDER BY eng_name`,
-        [operator],
-      );
-    }
+    const stationsMap = await getAllWeatherStations();
+    const filterOperator = !operator || String(operator).trim() === '' ? '' : String(operator);
+    rows = filterStationsByOperator([...stationsMap.values()], filterOperator);
+    rows.sort((a, b) => String(a.eng_name ?? '').localeCompare(String(b.eng_name ?? '')));
   } catch (e) {
     logger.error(e);
     rows = [];
@@ -414,7 +374,19 @@ router.post('/weather_stations.json', async (req, res) => {
     info: '',
     data: rows.map((r) =>
       omitNil({
-        ...r,
+        code: r.code,
+        chi_name: r.chi_name,
+        eng_name: r.eng_name,
+        lat: r.lat,
+        lng: r.lng,
+        wind_lat: r.wind_lat,
+        wind_lng: r.wind_lng,
+        webcam_angle: r.webcam_angle,
+        chi_name_abbr: r.chi_name_abbr,
+        eng_name_abbr: r.eng_name_abbr,
+        station_operator: r.station_operator,
+        photo_code: r.photo_code,
+        is_forecast: r.is_forecast,
         photo_2x_code: null,
       }),
     ),
@@ -452,9 +424,10 @@ router.post('/aqhi_stations.json', async (req, res) => {
   const cached = await getCache(cacheKey);
   if (cached) return res.json(cached);
 
-  const stations =
-    await query(`SELECT code, lat, lng, station_type, chi_name, eng_name
-    FROM aqhi_stations ORDER BY eng_name`);
+  const stationsMap = await getAllAqhiStations();
+  const stations = [...stationsMap.values()].sort((a, b) =>
+    String(a.eng_name ?? '').localeCompare(String(b.eng_name ?? '')),
+  );
   const aqhiMap = await getAllAqhiStationData();
 
   const response = {
