@@ -1,8 +1,9 @@
 import { DateTime } from 'luxon';
-import { query, queryOne } from '../db.js';
+import { queryOne } from '../db.js';
 import { getJson } from '../request-helper.js';
 import { handleTemperature, handleWindDirection } from './weather-station-updater.js';
 import logger from '../logger.js';
+import { setStationData } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -44,34 +45,16 @@ export async function runCommunityStationUpdater() {
       logger.info(`createing Community Station ${station.station}`);
     }
 
-    let sd = await queryOne(
-      'SELECT id FROM station_data WHERE weather_station_id = $1',
-      [ws.id],
-    );
     const updateTime = DateTime.fromISO(String(station.time), { zone: HK }).toFormat('HH:mm');
-    const row = [
-      handleWindDirection(station.wd),
-      Math.round(handleWindDirection(station.ws)),
-      handleTemperature(station.temp),
-      handleTemperature(station.rh),
-      handleTemperature(station.maxt),
-      handleTemperature(station.mint),
-      updateTime,
-    ];
-    if (!sd) {
-      await query(
-        `INSERT INTO station_data (weather_station_id, wind_direction, wind_speed, temperature,
-          humidity, max_temp, min_temp, update_time, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())`,
-        [ws.id, ...row],
-      );
-    } else {
-      await query(
-        `UPDATE station_data SET wind_direction=$1, wind_speed=$2, temperature=$3, humidity=$4,
-          max_temp=$5, min_temp=$6, update_time=$7, updated_at=NOW() WHERE id=$8`,
-        [...row, sd.id],
-      );
-    }
+    await setStationData(code, {
+      wind_direction: handleWindDirection(station.wd),
+      wind_speed: Math.round(handleWindDirection(station.ws)),
+      temperature: handleTemperature(station.temp),
+      humidity: handleTemperature(station.rh),
+      max_temp: handleTemperature(station.maxt),
+      min_temp: handleTemperature(station.mint),
+      update_time: updateTime,
+    });
   }
   logger.info('Community.Station - end');
 }

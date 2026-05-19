@@ -1,8 +1,8 @@
 import { DateTime } from 'luxon';
-import { query, queryOne } from '../db.js';
 import { getJson } from '../request-helper.js';
 import { htmlText, squish } from './html-utils.js';
 import logger from '../logger.js';
+import { getToday, mergeToday, getTyphoon, setTyphoon } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -30,16 +30,13 @@ async function upsertTyphoonFromTc(typhoon_match) {
   const chiName = typhoon_match.tcName;
   const raw = typhoon_match.enName ?? '';
   const engName = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
-  await query(
-    `INSERT INTO typhoons (typhoon_type, eng_name, chi_name, hko_id, created_at, updated_at, data_type)
-     VALUES (NULL,$1,$2,$3,NOW(),NOW(),$4)
-     ON CONFLICT (hko_id) DO UPDATE SET
-       chi_name = EXCLUDED.chi_name,
-       eng_name = EXCLUDED.eng_name,
-       data_type = EXCLUDED.data_type,
-       updated_at = NOW()`,
-    [engName, chiName, hkoId, dataType],
-  );
+  await setTyphoon(hkoId, {
+    hko_id: hkoId,
+    typhoon_type: null,
+    eng_name: engName,
+    chi_name: chiName,
+    data_type: dataType,
+  });
 }
 
 async function getTyphoonIdString() {
@@ -52,9 +49,7 @@ async function getTyphoonIdString() {
     logger.info(`Has typhoon - ${typhoon_match.enName}`);
     id.push(String(typhoon_match.tcId));
 
-    const existing = await queryOne('SELECT id, eng_name, chi_name, data_type FROM typhoons WHERE hko_id = $1', [
-      typhoon_match.tcId,
-    ]);
+    const existing = await getTyphoon(typhoon_match.tcId);
     await upsertTyphoonFromTc(typhoon_match);
     if (!existing) logger.info(`Insert typhoon - ${typhoon_match.enName}`);
   }
@@ -84,24 +79,32 @@ export async function runOneUpdater() {
   };
 
   const hkToday = DateTime.now().setZone('Asia/Hong_Kong').toISODate();
-  let today = await queryOne('SELECT * FROM todays WHERE forecast_day = $1', [hkToday]);
-
-  if (!today) {
-    const yesterday = await queryOne('SELECT * FROM todays ORDER BY forecast_day DESC LIMIT 1');
-    const y = yesterday || {};
-    await query(
-      `INSERT INTO todays (forecast_day, aqhi_current, chi_aqhi_forecast, eng_aqhi_forecast, aqhi_update_time,
-        created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,NOW(),NOW())`,
-      [
-        hkToday,
-        y.aqhi_current ?? null,
-        y.chi_aqhi_forecast ?? null,
-        y.eng_aqhi_forecast ?? null,
-        y.aqhi_update_time ?? null,
-      ],
-    );
-    today = await queryOne('SELECT * FROM todays WHERE forecast_day = $1', [hkToday]);
+  const existing = (await getToday()) ?? {};
+  if (existing.forecast_day !== hkToday) {
+    await mergeToday({
+      forecast_day: hkToday,
+      weather: null,
+      temperature: null,
+      humidity: null,
+      uv: null,
+      uv_level: null,
+      update_time: null,
+      typhoon_id: null,
+      chi_detail: null,
+      eng_detail: null,
+      eng_forecast_general: null,
+      chi_forecast_general: null,
+      sun_rise_time: null,
+      sun_set_time: null,
+      moon_rise_time: null,
+      moon_set_time: null,
+      tide_info: null,
+      astronomical_update_time: null,
+      aqhi_current: existing.aqhi_current ?? null,
+      chi_aqhi_forecast: existing.chi_aqhi_forecast ?? null,
+      eng_aqhi_forecast: existing.eng_aqhi_forecast ?? null,
+      aqhi_update_time: existing.aqhi_update_time ?? null,
+    });
   }
 
   const cmn = eng_json?.CMN;
@@ -121,40 +124,32 @@ export async function runOneUpdater() {
     tide_info: tide_raw_data.join(','),
     astronomical_update_time:
       astronomical_update_time && !Number.isNaN(astronomical_update_time.getTime())
-        ? astronomical_update_time
+        ? astronomical_update_time.toISOString()
         : null,
   };
 
   const merged = { ...todayData, ...detailBlock, ...moreData };
 
-  await query(
-    `UPDATE todays SET
-      weather=$1, temperature=$2, humidity=$3, uv=$4, uv_level=$5, update_time=$6, typhoon_id=$7,
-      chi_detail=$8, eng_detail=$9, eng_forecast_general=$10, chi_forecast_general=$11,
-      sun_rise_time=$12, sun_set_time=$13, moon_rise_time=$14, moon_set_time=$15, tide_info=$16,
-      astronomical_update_time=$17, updated_at=NOW()
-     WHERE forecast_day=$18`,
-    [
-      merged.weather ?? null,
-      merged.temperature ?? null,
-      merged.humidity ?? null,
-      merged.uv ?? null,
-      merged.uv_level ?? null,
-      merged.update_time ?? null,
-      merged.typhoon_id || null,
-      merged.chi_detail ?? null,
-      merged.eng_detail ?? null,
-      merged.eng_forecast_general ?? null,
-      merged.chi_forecast_general ?? null,
-      merged.sun_rise_time ?? null,
-      merged.sun_set_time ?? null,
-      merged.moon_rise_time ?? null,
-      merged.moon_set_time ?? null,
-      merged.tide_info ?? null,
-      merged.astronomical_update_time,
-      hkToday,
-    ],
-  );
+  await mergeToday({
+    forecast_day: hkToday,
+    weather: merged.weather ?? null,
+    temperature: merged.temperature ?? null,
+    humidity: merged.humidity ?? null,
+    uv: merged.uv ?? null,
+    uv_level: merged.uv_level ?? null,
+    update_time: merged.update_time ?? null,
+    typhoon_id: merged.typhoon_id || null,
+    chi_detail: merged.chi_detail ?? null,
+    eng_detail: merged.eng_detail ?? null,
+    eng_forecast_general: merged.eng_forecast_general ?? null,
+    chi_forecast_general: merged.chi_forecast_general ?? null,
+    sun_rise_time: merged.sun_rise_time ?? null,
+    sun_set_time: merged.sun_set_time ?? null,
+    moon_rise_time: merged.moon_rise_time ?? null,
+    moon_set_time: merged.moon_set_time ?? null,
+    tide_info: merged.tide_info ?? null,
+    astronomical_update_time: merged.astronomical_update_time ?? null,
+  });
 
   logger.info('OneUpdater - End');
 }

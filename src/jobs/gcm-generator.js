@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto';
 import { query } from '../db.js';
 import { enqueueGcmSend } from './gcm-sender.js';
 import logger from '../logger.js';
+import { getHeatIndex, getSpecialWeatherTips, getWarnings } from '../redis-client.js';
 
 const ACTIVE = 'A';
 
@@ -45,23 +46,40 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
 
     if (sendWarning) {
       logger.info('FCM - add warnings');
-      const warnings = await query(
-        `SELECT warning_type AS "warning_type", time, ${getLangPrefix(lang)}_detail as detail FROM weather_warnings`,
-      );
+      const prefix = getLangPrefix(lang);
+      const stored = await getWarnings();
+      const warnings = stored.map((w) => ({
+        warning_type: w.warning_type,
+        time: w.time,
+        detail: w[`${prefix}_detail`] ?? null,
+      }));
       await insertNotification(reg_ids, 'warn', JSON.stringify(warnings), 'warnings');
     }
 
     if (sendTips) {
       logger.info(`FCM - add tips - ${lang}`);
-      const tips = await query(`SELECT ${getLangPrefix(lang)}_title as "title", time, ${getLangPrefix(lang)}_content as "content" FROM special_weather_tips`);
+      const prefix = getLangPrefix(lang);
+      const stored = await getSpecialWeatherTips();
+      const tips = stored.map((t) => ({
+        title: t[`${prefix}_title`] ?? null,
+        time: t.time,
+        content: t[`${prefix}_content`] ?? null,
+      }));
       await insertNotification(reg_ids, 'tips', JSON.stringify(tips), 'tips');
     }
 
     if (sendHeat) {
       logger.info('FCM - add Heat Index');
-      const heats = await query(
-        `SELECT ${getLangPrefix(lang)}_title, ${getLangPrefix(lang)}_content, time, warning_type FROM heat_indices`,
-      );
+      const prefix = getLangPrefix(lang);
+      const heat = await getHeatIndex();
+      const heats = heat
+        ? [{
+            [`${prefix}_title`]: heat[`${prefix}_title`] ?? null,
+            [`${prefix}_content`]: heat[`${prefix}_content`] ?? null,
+            time: heat.time,
+            warning_type: heat.warning_type,
+          }]
+        : [];
       await insertNotification(reg_ids, 'tips', JSON.stringify(heats), 'heat');
     }
   }

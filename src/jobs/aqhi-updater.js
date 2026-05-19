@@ -5,6 +5,7 @@ import { REGEX_AQHI_CURRENT } from '../locales.js';
 import { query } from '../db.js';
 import { get } from '../request-helper.js';
 import logger from '../logger.js';
+import { mergeToday, setAqhiStationData } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -80,18 +81,13 @@ export async function runAqhiUpdater() {
 
   const hkToday = DateTime.now().setZone('Asia/Hong_Kong').toISODate();
 
-  await query(
-    `UPDATE todays SET aqhi_current=$1, chi_aqhi_forecast=$2, eng_aqhi_forecast=$3, aqhi_update_time=$4,
-      updated_at=NOW()
-     WHERE forecast_day=$5`,
-    [
-      aqhi_current,
-      chi_aqhi_forecast,
-      eng_forecast_general,
-      aqhi_update_time,
-      hkToday,
-    ],
-  );
+  await mergeToday({
+    forecast_day: hkToday,
+    aqhi_current,
+    chi_aqhi_forecast,
+    eng_aqhi_forecast: eng_forecast_general,
+    aqhi_update_time: aqhi_update_time ? aqhi_update_time.toISOString() : null,
+  });
 
   const rssEng = await get('https://www.aqhi.gov.hk/epd/ddata/html/out/aqhi_ind_rss_Eng.xml');
   const rssDoc = new DOMParser().parseFromString(rssEng, 'application/xml');
@@ -108,7 +104,7 @@ export async function runAqhiUpdater() {
     if (parts.length < 2) continue;
     const engStationName = parts[0].split(/ - /)[0];
     const indexRaw = parts[1].split(' ')[0];
-    const stationRows = await query(`SELECT id FROM aqhi_stations WHERE eng_name = $1 LIMIT 1`, [
+    const stationRows = await query(`SELECT code FROM aqhi_stations WHERE eng_name = $1 LIMIT 1`, [
       engStationName,
     ]);
     const station = stationRows[0];
@@ -116,11 +112,10 @@ export async function runAqhiUpdater() {
       logger.info(`AQHI Station Not found ${engStationName}`);
       continue;
     }
-    await query(`UPDATE aqhi_stations SET aqhi_index=$1, update_time=$2, updated_at=NOW() WHERE id=$3`, [
-      fixIndex(indexRaw.trim()),
-      update_time,
-      station.id,
-    ]);
+    await setAqhiStationData(station.code, {
+      aqhi_index: fixIndex(indexRaw.trim()),
+      update_time: update_time ? update_time.toISOString() : null,
+    });
   }
 
   logger.info(`AQHI - End`);

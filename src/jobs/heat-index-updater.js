@@ -1,8 +1,8 @@
 import { DateTime } from 'luxon';
-import { query } from '../db.js';
 import { getJson } from '../request-helper.js';
 import { runGcmGenerator } from './gcm-generator.js';
 import logger from '../logger.js';
+import { getHeatIndex, setHeatIndex } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -15,28 +15,29 @@ export async function runHeatIndexUpdater() {
   const chi_content = `${json.MessageTC1 ?? ''} ${json.MessageTC2 ?? ''} \n\n ${json.MessageTC3 ?? ''}`;
   const eng_content = `${json.MessageEN1 ?? ''} ${json.MessageEN2 ?? ''} \n\n ${json.MessageEN3 ?? ''}`;
   const warning_type = String(json.iconIndex ?? '');
-  let time = Date.now();
+  let time = new Date().toISOString();
   const ds = String(json.date ?? '').trim();
   if (ds.length >= 12) {
     const dt = DateTime.fromFormat(`${ds}+08:00`, 'yyyyMMddHHmmZZ');
-    if (dt.isValid) time = dt.toString();
+    if (dt.isValid) time = dt.toJSDate().toISOString();
   }
 
-  const oldIndex = await query('SELECT warning_type FROM heat_indices ORDER BY id LIMIT 5');
+  const oldIndex = await getHeatIndex();
   let changed = false;
-  if ((!oldIndex || oldIndex.length === 0) && warning_type !== '-1') {
+  if (!oldIndex && warning_type !== '-1') {
     changed = true;
-  } else if (oldIndex.length > 0 && String(oldIndex[0].warning_type) !== warning_type) {
+  } else if (oldIndex && String(oldIndex.warning_type) !== warning_type) {
     changed = true;
   }
 
-  await query('DELETE FROM heat_indices');
-  await query(
-    `INSERT INTO heat_indices (eng_title, chi_title, eng_content, chi_content, warning_type, time,
-      created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())`,
-    [eng_title, chi_title, eng_content, chi_content, warning_type, time],
-  );
+  await setHeatIndex({
+    eng_title,
+    chi_title,
+    eng_content,
+    chi_content,
+    warning_type,
+    time,
+  });
 
   if (changed) {
     logger.info(`HeatIndexUpdater - Changed ? ${changed}`);

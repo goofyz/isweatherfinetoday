@@ -1,9 +1,9 @@
 import { DateTime } from 'luxon';
-import { query } from '../db.js';
 import { URL_WARNING_SOURCE } from '../config.js';
 import { getJson, getRemotePageAsString } from '../request-helper.js';
 import { runGcmGenerator } from './gcm-generator.js';
 import logger from '../logger.js';
+import { getWarnings, setWarnings } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -158,7 +158,7 @@ async function createWarning(warning_type, warns) {
     const detail = await fetchDetail(link);
     return {
       warning_type: wt,
-      time,
+      time: time.toISOString(),
       chi_detail: detail.chi_detail,
       eng_detail: detail.eng_detail,
     };
@@ -215,22 +215,13 @@ export async function runOneWarningUpdater() {
     const json = await getJson(URL_WARNING_SOURCE);
     const warns = json?.DYN_DAT_WARNSUM ?? {};
 
-    const oldWarnings = await query(
-      'SELECT warning_type, time, eng_detail, chi_detail FROM weather_warnings ORDER BY id',
-    );
+    const oldWarnings = await getWarnings();
     const newWarnings = await loadWarningsFromNetwork(warns);
     sendWarning = !warningsAreEqual(oldWarnings, newWarnings);
 
     if (sendWarning) {
-      await query('DELETE FROM weather_warnings');
       logger.info(`Warning - save warnings count: ${newWarnings.length}`);
-      for (const w of newWarnings) {
-        await query(
-          `INSERT INTO weather_warnings (warning_type, time, eng_detail, chi_detail, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,NOW(),NOW())`,
-          [w.warning_type, w.time, w.eng_detail, w.chi_detail],
-        );
-      }
+      await setWarnings(newWarnings);
     }
   } catch (e) {
     // do nothing

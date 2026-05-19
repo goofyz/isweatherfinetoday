@@ -1,6 +1,6 @@
-import { query, queryOne } from '../db.js';
 import { getJson } from '../request-helper.js';
 import logger from '../logger.js';
+import { deleteFlickrPhoto, getAllFlickrPhotos, setFlickrPhoto } from '../redis-client.js';
 
 const FLICKR_API_KEY = '8edb524d5852f6db934a65305b603ebb';
 const FLICKR_API_GROUP_ID = '1463451@N25';
@@ -42,21 +42,14 @@ async function upsertFlickrPhoto(photoJson, mid_res_url, high_res_url) {
     .split(/\s+/g)
     .filter(Boolean);
 
-  const existing = await queryOne(`SELECT id FROM flickr_photos WHERE photo_id = $1`, [photoJson.id]);
-  if (!existing) {
-    await query(
-      `INSERT INTO flickr_photos (photo_id, owner_name, owner_url, mid_res_url, high_res_url,
-        tags, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())`,
-      [photoJson.id, photoJson.ownername ?? '', owner_url, mid_res_url, high_res_url, tags],
-    );
-    return;
-  }
-  await query(
-    `UPDATE flickr_photos SET owner_name=$1, owner_url=$2, mid_res_url=$3, high_res_url=$4, tags=$5,
-      updated_at=NOW() WHERE id=$6`,
-    [photoJson.ownername ?? '', owner_url, mid_res_url, high_res_url, tags, existing.id],
-  );
+  await setFlickrPhoto(photoJson.id, {
+    photo_id: String(photoJson.id),
+    owner_name: photoJson.ownername ?? '',
+    owner_url,
+    mid_res_url,
+    high_res_url,
+    tags,
+  });
 }
 
 async function upsertFromSearchPhoto(ph) {
@@ -83,6 +76,11 @@ export async function runFlickrPhotoUpdater() {
     await upsertFromSearchPhoto(ph).catch((e) => logger.error('flickr photo', ph?.id, e));
   }
 
-  await query(`DELETE FROM flickr_photos WHERE updated_at < NOW() - interval '10 day'`);
+  const cutoffMs = Date.now() - 10 * 24 * 3600 * 1000;
+  const existing = await getAllFlickrPhotos();
+  for (const [field, value] of existing) {
+    const ts = value?.updated_at ? new Date(value.updated_at).getTime() : 0;
+    if (!ts || ts < cutoffMs) await deleteFlickrPhoto(field);
+  }
   logger.info('FLICKR - end');
 }

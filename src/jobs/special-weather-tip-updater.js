@@ -1,9 +1,9 @@
 import { DateTime } from 'luxon';
 import { REGEX_SPECIAL_WEATHER_TIPS_CONTENT } from '../locales.js';
-import { query } from '../db.js';
 import { getRemotePageAsString } from '../request-helper.js';
 import { runGcmGenerator } from './gcm-generator.js';
 import logger from '../logger.js';
+import { getSpecialWeatherTips, setSpecialWeatherTips } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -64,10 +64,16 @@ async function getAllTips() {
       chi_content,
       eng_title: `${eng_content.slice(0, 60)}...`,
       chi_title: `${chi_content.slice(0, 30)}...`,
-      time: parseTipTime({ date: e.date, time: e.time }),
+      time: parseTipTime({ date: e.date, time: e.time }).toISOString(),
     });
   }
   return out;
+}
+
+function toMs(t) {
+  if (t == null) return NaN;
+  if (t instanceof Date) return t.getTime();
+  return new Date(t).getTime();
 }
 
 export function tipsAreEqual(oldRows, newRows) {
@@ -75,11 +81,13 @@ export function tipsAreEqual(oldRows, newRows) {
   for (let i = 0; i < oldRows.length; i += 1) {
     const x = oldRows[i];
     const y = newRows[i];
+    const xMs = toMs(x.time);
+    const yMs = toMs(y.time);
     const same =
       x.eng_title === y.eng_title &&
-      x.time instanceof Date &&
-      y.time instanceof Date &&
-      x.time.getTime() === y.time.getTime() &&
+      !Number.isNaN(xMs) &&
+      !Number.isNaN(yMs) &&
+      xMs === yMs &&
       x.eng_content === y.eng_content &&
       x.chi_title === y.chi_title;
     if (!same) return false;
@@ -89,32 +97,15 @@ export function tipsAreEqual(oldRows, newRows) {
 
 export async function runSpecialWeatherTipUpdater() {
   logger.info('SpecialWeatherTip - start');
-  const oldTips = await query(
-    'SELECT eng_title, time, eng_content, chi_title FROM special_weather_tips ORDER BY id',
-  );
+  const oldTips = await getSpecialWeatherTips();
 
   try {
-    const newTipsRaw = await getAllTips();
-
-    const normalizedOld = oldTips.map((r) => ({
-      ...r,
-      time: r.time instanceof Date ? r.time : new Date(r.time),
-    }));
-    const normalizedNew = newTipsRaw.map((r) => ({ ...r, time: r.time }));
-
-    const sendTip = !tipsAreEqual(normalizedOld, normalizedNew);
+    const newTips = await getAllTips();
+    const sendTip = !tipsAreEqual(oldTips, newTips);
 
     if (sendTip) {
-      await query('DELETE FROM special_weather_tips');
-      logger.info(`SpecialWeatherTips: ${normalizedNew.length}`);
-      for (const tip of normalizedNew) {
-        await query(
-          `INSERT INTO special_weather_tips (eng_title, chi_title, eng_content, chi_content, time,
-            created_at, updated_at)
-          VALUES ($1,$2,$3,$4,$5,NOW(),NOW())`,
-          [tip.eng_title, tip.chi_title, tip.eng_content, tip.chi_content, tip.time],
-        );
-      }
+      logger.info(`SpecialWeatherTips: ${newTips.length}`);
+      await setSpecialWeatherTips(newTips);
       await runGcmGenerator(false, true, false);
     }
   }

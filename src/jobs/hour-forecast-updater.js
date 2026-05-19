@@ -1,8 +1,8 @@
 import { DateTime } from 'luxon';
-import { query, queryOne } from '../db.js';
 import { URL_HOUR_FORECAST_SOURCE } from '../config.js';
 import { getJson } from '../request-helper.js';
 import logger from '../logger.js';
+import { setHourForecast } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 const MAX_HOURS_MS = 2 * 24 * 60 * 60 * 1000;
@@ -79,23 +79,13 @@ async function updateData(code) {
   const allHourForecast = extractHourForecast(json);
   const allDayForecast = extractDayForecast(json);
 
-  const allData = { updated_at: parseLastModified(json.LastModified).toJSDate(),
+  const allData = {
+    updated_at: parseLastModified(json.LastModified).toJSDate().toISOString(),
     ...allHourForecast,
     ...allDayForecast,
   };
 
-  const existing = await queryOne(`SELECT id FROM hour_forecasts WHERE code = $1`, [code]);
-  if (!existing) {
-    await query(`INSERT INTO hour_forecasts (code, data, created_at, updated_at) VALUES ($1,$2::jsonb,NOW(),NOW())`, [
-      code,
-      JSON.stringify(allData),
-    ]);
-    return;
-  }
-  await query(`UPDATE hour_forecasts SET data=$2::jsonb, updated_at=NOW() WHERE code=$1`, [
-    code,
-    JSON.stringify(allData),
-  ]);
+  await setHourForecast(code, allData);
 }
 
 export async function runHourForecastUpdater() {

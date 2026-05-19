@@ -9,7 +9,21 @@ import { isEng, naturalNumber, omitNil, truncate, warningSortOrder, toDateStr } 
 import { FLICKR_DOWN } from '../locales.js';
 import { query, queryOne } from '../db.js';
 import logger from '../logger.js';
-import { getCache, setCache } from '../redis-client.js';
+import {
+  getAllAqhiStationData,
+  getAllFlickrPhotos,
+  getAllForecasts,
+  getAllStationData,
+  getCache,
+  getHeatIndex,
+  getHourForecast,
+  getSpecialWeatherTips,
+  getStationData,
+  getToday,
+  getTyphoons,
+  getWarnings,
+  setCache,
+} from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -29,43 +43,73 @@ async function fromCacheOrFetch(cacheKey, fetcher) {
   return payload;
 }
 
+function mergeStationRow(ws, sd) {
+  return {
+    ws_id: ws.ws_id,
+    code: ws.code,
+    chi_name: ws.chi_name,
+    eng_name: ws.eng_name,
+    lat: ws.lat,
+    lng: ws.lng,
+    wind_lat: ws.wind_lat,
+    wind_lng: ws.wind_lng,
+    webcam_angle: ws.webcam_angle,
+    chi_name_abbr: ws.chi_name_abbr,
+    eng_name_abbr: ws.eng_name_abbr,
+    station_operator: ws.station_operator,
+    photo_code: ws.photo_code,
+    is_forecast: ws.is_forecast,
+    sd_id: null,
+    wind_direction: sd?.wind_direction ?? null,
+    wind_speed: sd?.wind_speed ?? null,
+    temperature: sd?.temperature ?? null,
+    max_temp: sd?.max_temp ?? null,
+    min_temp: sd?.min_temp ?? null,
+    humidity: sd?.humidity ?? null,
+    sd_update_time: sd?.update_time ?? null,
+    sd_updated_at: sd?.updated_at ?? null,
+  };
+}
+
 async function queryStationJoined(codeLc) {
-  return queryOne(
-    `SELECT
-      ws.id AS ws_id, ws.code, ws.chi_name, ws.eng_name, ws.lat, ws.lng, ws.wind_lat, ws.wind_lng,
-      ws.webcam_angle, ws.chi_name_abbr, ws.eng_name_abbr, ws.station_operator, ws.photo_code,
-      ws.is_forecast,
-      sd.id AS sd_id, sd.wind_direction, sd.wind_speed, sd.temperature, sd.max_temp, sd.min_temp,
-      sd.humidity, sd.update_time AS sd_update_time, sd.updated_at AS sd_updated_at
-     FROM weather_stations ws
-     LEFT JOIN station_data sd ON sd.weather_station_id = ws.id
-     WHERE lower(ws.code) = lower($1)`,
+  const ws = await queryOne(
+    `SELECT id AS ws_id, code, chi_name, eng_name, lat, lng, wind_lat, wind_lng,
+      webcam_angle, chi_name_abbr, eng_name_abbr, station_operator, photo_code, is_forecast
+     FROM weather_stations
+     WHERE lower(code) = lower($1)`,
     [codeLc],
   );
+  if (!ws) return null;
+  const sd = await getStationData(ws.code);
+  return mergeStationRow(ws, sd);
 }
 
 async function findNearestWeatherStation(lat, lng, operator) {
   const params = [];
   let filt = '';
   if (operator === 'all') filt = '';
-  else if (!operator || operator === '') filt = 'AND ws.station_operator IS NULL';
+  else if (!operator || operator === '') filt = 'AND station_operator IS NULL';
   else {
-    filt = `AND ws.station_operator = $${params.length + 1}`;
+    filt = `AND station_operator = $${params.length + 1}`;
     params.push(operator);
   }
 
   const sql = `
-    SELECT ws.id AS ws_id, ws.code, ws.chi_name, ws.eng_name, ws.lat, ws.lng,
-      ws.wind_lat, ws.wind_lng, ws.webcam_angle, ws.chi_name_abbr, ws.eng_name_abbr,
-      ws.station_operator, ws.photo_code, ws.is_forecast,
-      sd.id AS sd_id, sd.wind_direction, sd.wind_speed, sd.temperature,
-      sd.max_temp, sd.min_temp, sd.humidity,
-      sd.update_time AS sd_update_time, sd.updated_at AS sd_updated_at
-    FROM weather_stations ws
-    INNER JOIN station_data sd ON sd.weather_station_id = ws.id
+    SELECT id AS ws_id, code, chi_name, eng_name, lat, lng,
+      wind_lat, wind_lng, webcam_angle, chi_name_abbr, eng_name_abbr,
+      station_operator, photo_code, is_forecast
+    FROM weather_stations
     WHERE 1=1 ${filt}
   `;
-  const rows = await query(sql, params);
+  const stations = await query(sql, params);
+  const dataMap = await getAllStationData();
+
+  const rows = [];
+  for (const ws of stations) {
+    const sd = dataMap.get(String(ws.code).toLowerCase());
+    if (!sd) continue;
+    rows.push(mergeStationRow(ws, sd));
+  }
 
   rows.sort(
     (a, b) =>
@@ -74,9 +118,10 @@ async function findNearestWeatherStation(lat, lng, operator) {
   );
 
   const nowMs = Date.now();
+  const staleCutoffMs = nowMs - 3 * 3600 * 1000;
   for (const r of rows) {
     if (!r.sd_updated_at) continue;
-    if (new Date(r.sd_updated_at).getTime() + 3 * 3600 * 1000 > nowMs) continue;
+    if (new Date(r.sd_updated_at).getTime() < staleCutoffMs) continue;
     if (String(r.code).toLowerCase() === 'vp1') {
       if (pointInPeakPolygon(lat, lng)) return r;
       continue;
@@ -87,6 +132,7 @@ async function findNearestWeatherStation(lat, lng, operator) {
     if (Number.isNaN(tempNum) || Math.abs(tempNum + 99.9) < 0.001) continue;
     return r;
   }
+  logger.info(`findNearestWeatherStation: no fresh station (operator=${operator ?? ''}, candidates=${rows.length})`);
   return null;
 }
 
@@ -111,8 +157,19 @@ async function findWeatherStation(lat, lng, station_code, operator) {
   return row;
 }
 
+function mergeAqhiStation(meta, dyn) {
+  return {
+    ...meta,
+    aqhi_index: dyn?.aqhi_index ?? null,
+    update_time: dyn?.update_time ?? null,
+  };
+}
+
 async function findNearestAqhi(lat, lng) {
-  const rows = await query(`SELECT * FROM aqhi_stations`);
+  const stations = await query(`SELECT * FROM aqhi_stations`);
+  const aqhiMap = await getAllAqhiStationData();
+  const rows = stations.map((s) => mergeAqhiStation(s, aqhiMap.get(String(s.code))));
+
   rows.sort(
     (a, b) =>
       distanceKm(lat, lng, Number(a.lat), Number(a.lng)) -
@@ -138,17 +195,16 @@ async function flickrPhotosForWeather(weather, hourHK) {
   const wt = flickrTagsByWeather(weather);
   const combo = [...new Set([...timeTags, ...wt])];
 
-  async function unionQuery(tagsArr) {
-    if (!tagsArr.length) return [];
-    return query(
-      `SELECT id, photo_id, owner_name, owner_url, mid_res_url, high_res_url
-       FROM flickr_photos WHERE tags && $1::text[]`,
-      [tagsArr],
-    );
-  }
+  const all = [...(await getAllFlickrPhotos()).values()];
 
-  let rows = await unionQuery(combo);
-  if ((rows?.length ?? 0) < 3) rows = await unionQuery(timeTags);
+  const filterByTags = (tagsArr) => {
+    if (!tagsArr.length) return [];
+    const wanted = new Set(tagsArr);
+    return all.filter((p) => Array.isArray(p.tags) && p.tags.some((t) => wanted.has(t)));
+  };
+
+  let rows = filterByTags(combo);
+  if ((rows?.length ?? 0) < 3) rows = filterByTags(timeTags);
   return rows;
 }
 
@@ -246,41 +302,45 @@ router.post('/station_data.json', async (req, res) => {
   const cached = await getCache(cacheKey);
   if (cached) return res.json(cached);
 
-  let rows;
+  let rows = [];
   logger.info(`operator filter: ${operator}`);
 
   try {
+    let stations;
     if (!operator || operator === '') {
-      rows = await query(
-        `SELECT ws.code AS code,
-           sd.wind_direction, sd.wind_speed, sd.temperature,
-           sd.max_temp, sd.min_temp, sd.humidity,
-           sd.update_time
-         FROM weather_stations ws
-         INNER JOIN station_data sd ON sd.weather_station_id = ws.id
-         WHERE ws.station_operator IS NULL AND sd.update_time IS NOT NULL`,
+      stations = await query(
+        `SELECT code FROM weather_stations WHERE station_operator IS NULL`,
       );
     } else if (operator === 'all') {
-      rows = await query(
-        `SELECT ws.code AS code,
-           sd.wind_direction, sd.wind_speed, sd.temperature,
-           sd.max_temp, sd.min_temp, sd.humidity,
-           sd.update_time
-         FROM weather_stations ws
-         INNER JOIN station_data sd ON sd.weather_station_id = ws.id
-         WHERE sd.update_time IS NOT NULL AND sd.updated_at > NOW() - interval '3 hours'`,
-      );
+      stations = await query(`SELECT code FROM weather_stations`);
     } else {
-      rows = await query(
-        `SELECT ws.code AS code,
-           sd.wind_direction, sd.wind_speed, sd.temperature,
-           sd.max_temp, sd.min_temp, sd.humidity,
-           sd.update_time
-         FROM weather_stations ws
-         INNER JOIN station_data sd ON sd.weather_station_id = ws.id
-         WHERE ws.station_operator = $1 AND sd.update_time IS NOT NULL`,
+      stations = await query(
+        `SELECT code FROM weather_stations WHERE station_operator = $1`,
         [operator],
       );
+    }
+
+    const dataMap = await getAllStationData();
+    const freshCutoffMs = Date.now() - 3 * 3600 * 1000;
+
+    for (const st of stations) {
+      const sd = dataMap.get(String(st.code).toLowerCase());
+      if (!sd) continue;
+      if (sd.update_time == null) continue;
+      if (operator === 'all') {
+        if (!sd.updated_at) continue;
+        if (new Date(sd.updated_at).getTime() <= freshCutoffMs) continue;
+      }
+      rows.push({
+        code: st.code,
+        wind_direction: sd.wind_direction,
+        wind_speed: sd.wind_speed,
+        temperature: sd.temperature,
+        max_temp: sd.max_temp,
+        min_temp: sd.min_temp,
+        humidity: sd.humidity,
+        update_time: sd.update_time,
+      });
     }
   } catch (e) {
     logger.error(e);
@@ -371,14 +431,12 @@ router.post('/hour_forecast.json', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-    const hf = await queryOne(`SELECT data FROM hour_forecasts WHERE lower(code)=lower($1)`, [code]);
-    const success = !!hf;
-    const dataBlob = hf?.data ?? {};
-    const inner = typeof dataBlob === 'string' ? JSON.parse(dataBlob) : dataBlob;
+    const inner = await getHourForecast(code);
+    const success = !!inner;
     const response = omitNil({
       success,
       info: '',
-      data: omitNil(inner),
+      data: omitNil(inner ?? {}),
     });
     await setCache(cacheKey, response);
     res.json(response);
@@ -394,25 +452,26 @@ router.post('/aqhi_stations.json', async (req, res) => {
   const cached = await getCache(cacheKey);
   if (cached) return res.json(cached);
 
-  const rows =
-    await query(`SELECT code, lat, lng, station_type, aqhi_index, update_time, chi_name, eng_name
+  const stations =
+    await query(`SELECT code, lat, lng, station_type, chi_name, eng_name
     FROM aqhi_stations ORDER BY eng_name`);
+  const aqhiMap = await getAllAqhiStationData();
 
   const response = {
     success: true,
     info: '',
-    data: rows.map((s) =>
-      omitNil({
+    data: stations.map((s) => {
+      const dyn = aqhiMap.get(String(s.code));
+      return omitNil({
         code: s.code,
         lat: s.lat != null ? Number(s.lat) : null,
         lng: s.lng != null ? Number(s.lng) : null,
         station_type: s.station_type,
-        aqhi_index: s.aqhi_index,
-        update_time:
-          s.update_time instanceof Date ? s.update_time.toISOString() : s.update_time,
+        aqhi_index: dyn?.aqhi_index ?? null,
+        update_time: dyn?.update_time ?? null,
         name: isEng(lang) ? s.eng_name : s.chi_name,
-      }),
-    ),
+      });
+    }),
   };
 
   await setCache(cacheKey, response);
@@ -450,44 +509,44 @@ router.post('/weathers.json', async (req, res) => {
     const deviceWidth = Number.parseInt(api.width ?? '0', 10);
 
     const hkTodayIso = DateTime.now().setZone('Asia/Hong_Kong').toISODate();
-    const hkTodayMidnightIso = `${hkTodayIso}T00:00:00.000`;
+    const hkTodayMidnightMs = DateTime.fromISO(hkTodayIso, { zone: 'Asia/Hong_Kong' })
+      .startOf('day')
+      .toMillis();
 
-    const todayRows = await query(`SELECT * FROM todays ORDER BY id DESC LIMIT 1`);
-    const todayRow = todayRows[0];
+    const todayRow = await getToday();
 
-    let warningsRows = await query(`SELECT * FROM weather_warnings`);
+    const warningsRows = await getWarnings();
     warningsRows.sort((a, b) => warningSortOrder(a.warning_type) - warningSortOrder(b.warning_type));
 
-    const tipsRows =
-      await query(`SELECT eng_title, chi_title, eng_content, chi_content, time FROM special_weather_tips`);
+    const tipsRows = await getSpecialWeatherTips();
 
-    const hiRows = await query(
-      `SELECT eng_title, chi_title, eng_content, chi_content, time, warning_type
-       FROM heat_indices WHERE time >= $1::timestamp`,
-      [hkTodayMidnightIso],
-    );
-    const heatIndexRow = hiRows.length ? hiRows[0] : null;
+    const heatIndexFull = await getHeatIndex();
+    const heatIndexRow =
+      heatIndexFull && heatIndexFull.time && new Date(heatIndexFull.time).getTime() >= hkTodayMidnightMs
+        ? heatIndexFull
+        : null;
 
     let typhoonRows = [];
     if (todayRow?.typhoon_id && String(todayRow.typhoon_id).trim()) {
-      const ids = todayRow.typhoon_id.split(/,/).map((x) => x.trim()).filter(Boolean).map(Number).filter((n)=>!Number.isNaN(n));
-      if (ids.length)
-        typhoonRows = await query(
-          `SELECT hko_id, data_type, eng_name, chi_name FROM typhoons WHERE hko_id = ANY($1::int[])`,
-          [ids],
-        );
+      const ids = todayRow.typhoon_id.split(/,/).map((x) => x.trim()).filter(Boolean).map(Number).filter((n) => !Number.isNaN(n));
+      if (ids.length) typhoonRows = await getTyphoons(ids);
     }
 
-    const forecasts = await query(
-      `SELECT * FROM forecasts WHERE forecast_day >= $1::date ORDER BY forecast_day ASC`,
-      [hkTodayIso],
-    );
+    const forecastsMap = await getAllForecasts();
+    const forecasts = [...forecastsMap.values()]
+      .filter((f) => f.forecast_day && String(f.forecast_day) >= hkTodayIso)
+      .sort((a, b) => String(a.forecast_day).localeCompare(String(b.forecast_day)));
 
     const wxRow = await findWeatherStation(lat, lng, station_code ?? null,
       operator === 'all' ? 'all' : undefined);
 
     if (!todayRow || !wxRow || wxRow.sd_update_time == null) {
-      return res.status(503).json({ success: false, info: 'no data yet', data: null });
+      const missing = [];
+      if (!todayRow) missing.push('today');
+      if (!wxRow) missing.push('weather_station');
+      else if (wxRow.sd_update_time == null) missing.push('station_data');
+      logger.warn(`weathers.json 503 - missing: ${missing.join(',')} (station_code=${station_code ?? ''})`);
+      return res.status(503).json({ success: false, info: `no data yet (missing: ${missing.join(',')})`, data: null });
     }
 
     if (
