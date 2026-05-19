@@ -53,3 +53,25 @@ for (const m of [1, 2, 4, 6, 8, 11]) {
 cron.schedule('0 3 * * *', wrap('flickr', runFlickrPhotoUpdater));
 
 logger.info('[scheduler] Clock started (TZ=%s)', process.env.TZ);
+
+const startupTasks = [
+  ['one_updater', runOneUpdater],
+  ['warnings', runOneWarningUpdater],
+  ['special_tips', runSpecialWeatherTipUpdater],
+  ['weather_stations', runWeatherStationUpdater],
+  ['community_stations', runCommunityStationUpdater],
+  ['weather_forecast', runWeatherForecastUpdater],
+  ['aqhi', runAqhiUpdater],
+  ['heat_index', runHeatIndexUpdater],
+  ['hour_forecast', runHourForecastUpdater],
+  ['gcm', sendGcmImmediate],
+  ['flickr', runFlickrPhotoUpdater],
+];
+
+(async () => {
+  logger.info('[scheduler] Running initial sequential updates');
+  for (const [name, fn] of startupTasks) {
+    await wrap(name, fn)();
+  }
+  logger.info('[scheduler] Initial sequential updates complete');
+})();
