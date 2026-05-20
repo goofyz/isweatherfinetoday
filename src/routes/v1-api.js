@@ -448,7 +448,12 @@ function buildWeathersResponse(global, loc, lang) {
 
 router.post('/devices', async (req, res) => {
   const device = req.body.device ?? {};
-  const pattern = `lat=${device.reg_id ?? ''}, lng=${device.type ?? ''}, v=${device.app_version ?? ''}, key=${DEVICE_SECRET_KEY}, time=${req.body.t ?? ''}`;
+  const regId = typeof device.reg_id === 'string' ? device.reg_id.trim() : '';
+  if (!regId) {
+    return res.json({ success: false, info: 'missing required data' });
+  }
+
+  const pattern = `lat=${regId}, lng=${device.type ?? ''}, v=${device.app_version ?? ''}, key=${DEVICE_SECRET_KEY}, time=${req.body.t ?? ''}`;
   const hash = sha1Hex(pattern);
   const t = Number(req.body.t ?? 0);
   const submitRequestDate = new Date(t * 1000);
@@ -463,7 +468,7 @@ router.post('/devices', async (req, res) => {
 
   let dbParams;
   try {
-    let row = await queryOne(`SELECT * FROM devices WHERE reg_id=$1`, [device.reg_id]);
+    let row = await queryOne(`SELECT * FROM devices WHERE reg_id=$1`, [regId]);
     const remoteIp =
       req.headers['x-forwarded-for']?.split(',')[0]?.trim() ??
       req.socket.remoteAddress ??
@@ -473,7 +478,7 @@ router.post('/devices', async (req, res) => {
 
     if (!row) {
       dbParams = {
-        reg_id: device.reg_id,
+        reg_id: regId,
         os_type: String(device.os_type ?? ''),
         app_version: appVersionOrZero,
         lang: device.lang,

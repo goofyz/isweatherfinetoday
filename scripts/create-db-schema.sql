@@ -35,7 +35,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS index_aqhi_stations_on_code ON aqhi_stations (
 
 CREATE TABLE IF NOT EXISTS devices (
   id bigserial PRIMARY KEY,
-  reg_id text,
+  reg_id text NOT NULL,
   os_type varchar,
   app_version integer,
   lang varchar,
@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS devices (
   updated_at timestamp(6) NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS index_devices_on_reg_id ON devices (reg_id);
+
+DELETE FROM devices WHERE reg_id IS NULL;
+ALTER TABLE devices ALTER COLUMN reg_id SET NOT NULL;
 
 CREATE TABLE IF NOT EXISTS flickr_photos (
   id bigserial PRIMARY KEY,
