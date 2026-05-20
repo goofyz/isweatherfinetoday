@@ -1,6 +1,11 @@
 import { getJson } from '../request-helper.js';
 import logger from '../logger.js';
-import { deleteFlickrPhoto, getAllFlickrPhotos, setFlickrPhoto } from '../redis-client.js';
+import {
+  deleteFlickrPhoto,
+  getAllFlickrPhotos,
+  rebuildFlickrTagIndex,
+  setFlickrPhoto,
+} from '../redis-client.js';
 
 const FLICKR_API_KEY = '8edb524d5852f6db934a65305b603ebb';
 const FLICKR_API_GROUP_ID = '1463451@N25';
@@ -82,5 +87,7 @@ export async function runFlickrPhotoUpdater() {
     const ts = value?.updated_at ? new Date(value.updated_at).getTime() : 0;
     if (!ts || ts < cutoffMs) await deleteFlickrPhoto(field);
   }
+
+  await rebuildFlickrTagIndex();
   logger.info('FLICKR - end');
 }

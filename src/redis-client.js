@@ -53,6 +53,10 @@ export async function setCache(key, value, ttlSeconds = REDIS_CACHE_TTL_SECONDS)
   }
 }
 
+export function setCacheInBackground(key, value, ttlSeconds = REDIS_CACHE_TTL_SECONDS) {
+  void setCache(key, value, ttlSeconds);
+}
+
 const STATION_DATA_KEY = 'weather:station_data';
 
 export async function setStationData(code, data) {
@@ -108,8 +112,13 @@ const HEAT_INDEX_KEY = 'weather:heat_index';
 const AQHI_DATA_KEY = 'weather:aqhi_data';
 const FORECASTS_KEY = 'weather:forecasts';
 const FLICKR_PHOTOS_KEY = 'weather:flickr_photos';
+const FLICKR_TAG_KEY_PREFIX = 'weather:flickr_tag:';
 const WEATHER_STATIONS_KEY = 'weather:weather_stations';
 const AQHI_STATIONS_KEY = 'weather:aqhi_stations';
+
+function flickrTagKey(tag) {
+  return `${FLICKR_TAG_KEY_PREFIX}${tag}`;
+}
 
 async function getJsonKey(key) {
   if (!redisClient) return null;
@@ -189,13 +198,9 @@ export async function getTyphoon(hkoId) {
 }
 
 export async function getTyphoons(hkoIds) {
-  const out = [];
-  if (!Array.isArray(hkoIds) || hkoIds.length === 0) return out;
-  for (const id of hkoIds) {
-    const t = await hGetJson(TYPHOONS_KEY, String(id));
-    if (t) out.push(t);
-  }
-  return out;
+  if (!Array.isArray(hkoIds) || hkoIds.length === 0) return [];
+  const rows = await Promise.all(hkoIds.map((id) => hGetJson(TYPHOONS_KEY, String(id))));
+  return rows.filter(Boolean);
 }
 
 export async function setHourForecast(code, data) {
@@ -278,21 +283,109 @@ export async function getAllForecasts() {
   return hGetAllJson(FORECASTS_KEY);
 }
 
+export async function indexFlickrPhotoTags(photoId, tags) {
+  if (!redisClient || !tags?.length) return;
+  const id = String(photoId);
+  try {
+    await Promise.all(
+      tags.map((tag) => redisClient.sAdd(flickrTagKey(tag), id)),
+    );
+  } catch (error) {
+    logger.warn(`Redis index flickr tags for ${photoId} failed:`, error);
+  }
+}
+
+export async function unindexFlickrPhotoTags(photoId, tags) {
+  if (!redisClient || !tags?.length) return;
+  const id = String(photoId);
+  try {
+    await Promise.all(
+      tags.map((tag) => redisClient.sRem(flickrTagKey(tag), id)),
+    );
+  } catch (error) {
+    logger.warn(`Redis unindex flickr tags for ${photoId} failed:`, error);
+  }
+}
+
 export async function setFlickrPhoto(photoId, data) {
-  await hSetJson(FLICKR_PHOTOS_KEY, String(photoId), {
+  const id = String(photoId);
+  const old = await hGetJson(FLICKR_PHOTOS_KEY, id);
+  if (old?.tags?.length) await unindexFlickrPhotoTags(id, old.tags);
+  await hSetJson(FLICKR_PHOTOS_KEY, id, {
     ...data,
     updated_at: new Date().toISOString(),
   });
+  if (data?.tags?.length) await indexFlickrPhotoTags(id, data.tags);
 }
 
 export async function getAllFlickrPhotos() {
   return hGetAllJson(FLICKR_PHOTOS_KEY);
 }
 
+export async function getFlickrPhotosByIds(photoIds) {
+  if (!redisClient || !photoIds?.length) return [];
+  try {
+    const raws = await redisClient.hmGet(FLICKR_PHOTOS_KEY, photoIds.map(String));
+    const out = [];
+    for (const raw of raws ?? []) {
+      if (!raw) continue;
+      try {
+        out.push(JSON.parse(raw));
+      } catch (parseErr) {
+        logger.warn('Redis flickr photo parse failed:', parseErr);
+      }
+    }
+    return out;
+  } catch (error) {
+    logger.warn('Redis hmGet flickr_photos failed:', error);
+    return [];
+  }
+}
+
+export async function getFlickrPhotosMatchingTags(tags) {
+  if (!tags?.length) return [];
+  if (!redisClient) return [];
+
+  try {
+    const keys = tags.map((tag) => flickrTagKey(tag));
+    const ids = await redisClient.sUnion(keys);
+    if (ids?.length) return getFlickrPhotosByIds(ids);
+  } catch (error) {
+    logger.warn('Redis sUnion flickr tags failed:', error);
+  }
+  return [];
+}
+
+export async function rebuildFlickrTagIndex() {
+  if (!redisClient) return;
+
+  try {
+    for await (const key of redisClient.scanIterator({
+      MATCH: `${FLICKR_TAG_KEY_PREFIX}*`,
+      COUNT: 100,
+    })) {
+      await redisClient.del(key);
+    }
+  } catch (error) {
+    logger.warn('Redis clear flickr tag index failed:', error);
+    return;
+  }
+
+  const all = await getAllFlickrPhotos();
+  await Promise.all(
+    [...all.entries()].map(([id, photo]) =>
+      photo?.tags?.length ? indexFlickrPhotoTags(id, photo.tags) : Promise.resolve(),
+    ),
+  );
+}
+
 export async function deleteFlickrPhoto(photoId) {
   if (!redisClient) return;
+  const id = String(photoId);
   try {
-    await redisClient.hDel(FLICKR_PHOTOS_KEY, String(photoId));
+    const old = await hGetJson(FLICKR_PHOTOS_KEY, id);
+    if (old?.tags?.length) await unindexFlickrPhotoTags(id, old.tags);
+    await redisClient.hDel(FLICKR_PHOTOS_KEY, id);
   } catch (error) {
     logger.warn(`Redis hDel flickr_photos/${photoId} failed:`, error);
   }

@@ -10,13 +10,8 @@ import { FLICKR_DOWN } from '../locales.js';
 import { query, queryOne } from '../db.js';
 import logger from '../logger.js';
 import {
-  getAllAqhiStationData,
-  getAllAqhiStations,
-  getAllFlickrPhotos,
-  getAllForecasts,
-  getAllStationData,
-  getAllWeatherStations,
   getCache,
+  getFlickrPhotosMatchingTags,
   getHeatIndex,
   getHourForecast,
   getSpecialWeatherTips,
@@ -25,8 +20,15 @@ import {
   getTyphoons,
   getWarnings,
   getWeatherStation,
+  getAllForecasts,
   setCache,
+  setCacheInBackground,
 } from '../redis-client.js';
+import {
+  getCachedAqhiStationsAndData,
+  getCachedFlickrPhotos,
+  getCachedWeatherStationsAndData,
+} from '../redis-bulk-cache.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -87,10 +89,10 @@ function filterStationsByOperator(stations, operator) {
   return stations.filter((s) => s.station_operator === operator);
 }
 
-async function findNearestWeatherStation(lat, lng, operator) {
-  const stationsMap = await getAllWeatherStations();
+async function findNearestWeatherStation(lat, lng, operator, weatherBulk) {
+  const { stationsMap, dataMap } =
+    weatherBulk ?? (await getCachedWeatherStationsAndData());
   const stations = filterStationsByOperator([...stationsMap.values()], operator);
-  const dataMap = await getAllStationData();
 
   const rows = [];
   for (const ws of stations) {
@@ -124,12 +126,14 @@ async function findNearestWeatherStation(lat, lng, operator) {
   return null;
 }
 
-async function findWeatherStation(lat, lng, station_code, operator) {
-  if (!station_code || String(station_code).trim() === '') return findNearestWeatherStation(lat, lng, operator);
+async function findWeatherStation(lat, lng, station_code, operator, weatherBulk) {
+  if (!station_code || String(station_code).trim() === '') {
+    return findNearestWeatherStation(lat, lng, operator, weatherBulk);
+  }
 
   let row = await loadStationJoined(String(station_code).trim().toLowerCase());
   if (!row) row = await loadStationJoined('hko');
-  if (!row) return findNearestWeatherStation(lat, lng, operator);
+  if (!row) return findNearestWeatherStation(lat, lng, operator, weatherBulk);
 
   const tempNum = row.temperature == null ? NaN : Number(row.temperature);
   if (
@@ -138,10 +142,8 @@ async function findWeatherStation(lat, lng, station_code, operator) {
     || Number.isNaN(tempNum)
     || Math.abs(tempNum + 99.9) < 0.001
   ) {
-    return findNearestWeatherStation(Number(row.lat), Number(row.lng), operator);
+    return findNearestWeatherStation(Number(row.lat), Number(row.lng), operator, weatherBulk);
   }
-  lat = Number(row.lat);
-  lng = Number(row.lng);
   return row;
 }
 
@@ -153,9 +155,9 @@ function mergeAqhiStation(meta, dyn) {
   };
 }
 
-async function findNearestAqhi(lat, lng) {
-  const stationsMap = await getAllAqhiStations();
-  const aqhiMap = await getAllAqhiStationData();
+async function findNearestAqhi(lat, lng, aqhiBulk) {
+  const { stationsMap, dataMap: aqhiMap } =
+    aqhiBulk ?? (await getCachedAqhiStationsAndData());
   const rows = [...stationsMap.values()].map((s) =>
     mergeAqhiStation(s, aqhiMap.get(String(s.code))),
   );
@@ -185,15 +187,19 @@ async function flickrPhotosForWeather(weather, hourHK) {
   const wt = flickrTagsByWeather(weather);
   const combo = [...new Set([...timeTags, ...wt])];
 
-  const all = [...(await getAllFlickrPhotos()).values()];
+  let rows = await getFlickrPhotosMatchingTags(combo);
+  if ((rows?.length ?? 0) < 3) rows = await getFlickrPhotosMatchingTags(timeTags);
 
+  if ((rows?.length ?? 0) >= 3) return rows;
+
+  const all = [...(await getCachedFlickrPhotos()).values()];
   const filterByTags = (tagsArr) => {
     if (!tagsArr.length) return [];
     const wanted = new Set(tagsArr);
     return all.filter((p) => Array.isArray(p.tags) && p.tags.some((t) => wanted.has(t)));
   };
 
-  let rows = filterByTags(combo);
+  rows = filterByTags(combo);
   if ((rows?.length ?? 0) < 3) rows = filterByTags(timeTags);
   return rows;
 }
@@ -226,6 +232,218 @@ function buildWarningNode(w, lang) {
     time: w.time instanceof Date ? w.time.toISOString() : w.time,
     detail: isEng(lang) ? w.eng_detail : w.chi_detail,
   });
+}
+
+const WEATHERS_GLOBAL_CACHE_KEY = 'api:weathers:global';
+
+function parseTyphoonIds(typhoonId) {
+  if (!typhoonId || !String(typhoonId).trim()) return [];
+  return typhoonId
+    .split(/,/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((n) => !Number.isNaN(n));
+}
+
+function weathersLocCacheKey({ lat, lng, station_code, operator, deviceHeight, deviceWidth }) {
+  return `api:weathers:loc:${sha1Hex(
+    JSON.stringify({
+      lat,
+      lng,
+      station_code: station_code ?? '',
+      operator: operator ?? '',
+      flickr: ENABLE_FLICKR_PHOTO ? '1' : '0',
+      height: deviceHeight,
+      width: deviceWidth,
+    }),
+  )}`;
+}
+
+function weathersFullCacheKey({
+  lat,
+  lng,
+  station_code,
+  operator,
+  lang,
+  deviceHeight,
+  deviceWidth,
+}) {
+  return `api:weathers:${sha1Hex(
+    JSON.stringify({
+      lat,
+      lng,
+      station_code: station_code ?? '',
+      operator: operator ?? '',
+      lang,
+      height: deviceHeight,
+      width: deviceWidth,
+      flickr: ENABLE_FLICKR_PHOTO ? '1' : '0',
+    }),
+  )}`;
+}
+
+async function fetchWeathersGlobalBundle(hkTodayIso, hkTodayMidnightMs) {
+  const [todayRow, warningsRows, tipsRows, heatIndexFull, forecastsMap] = await Promise.all([
+    getToday(),
+    getWarnings(),
+    getSpecialWeatherTips(),
+    getHeatIndex(),
+    getAllForecasts(),
+  ]);
+
+  warningsRows.sort((a, b) => warningSortOrder(a.warning_type) - warningSortOrder(b.warning_type));
+
+  const heatIndexRow =
+    heatIndexFull && heatIndexFull.time && new Date(heatIndexFull.time).getTime() >= hkTodayMidnightMs
+      ? heatIndexFull
+      : null;
+
+  const typhoonIds = parseTyphoonIds(todayRow?.typhoon_id);
+  const typhoonRows = typhoonIds.length ? await getTyphoons(typhoonIds) : [];
+
+  const forecasts = [...forecastsMap.values()]
+    .filter((f) => f.forecast_day && String(f.forecast_day) >= hkTodayIso)
+    .sort((a, b) => String(a.forecast_day).localeCompare(String(b.forecast_day)));
+
+  return { todayRow, warningsRows, tipsRows, heatIndexRow, typhoonRows, forecasts };
+}
+
+async function buildFlickrImageOuter(todayRow, deviceHeight, deviceWidth) {
+  if (!ENABLE_FLICKR_PHOTO) {
+    return { imageOuter: omitNil({ photo_id: -1 }), message: FLICKR_DOWN };
+  }
+
+  const hourHK = DateTime.now().setZone(HK).hour;
+  const pool = await flickrPhotosForWeather(String(todayRow?.weather ?? ''), hourHK);
+  const photoPick = pool?.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+  const high = deviceHeight > 1280 || deviceWidth > 1000 ? !!(photoPick?.high_res_url) : false;
+
+  const imageOuter = !photoPick
+    ? omitNil({ owner_url: null, owner_name: null, image_url: null })
+    : omitNil({
+        owner_name: truncate(photoPick.owner_name ?? '', 20),
+        owner_url: photoPick.owner_url,
+        image_url: high && photoPick.high_res_url ? photoPick.high_res_url : photoPick.mid_res_url,
+      });
+
+  return { imageOuter, message: '' };
+}
+
+async function fetchWeathersLocationBundle({
+  lat,
+  lng,
+  station_code,
+  operator,
+  todayRow,
+  deviceHeight,
+  deviceWidth,
+}) {
+  const [weatherBulk, aqhiBulk] = await Promise.all([
+    getCachedWeatherStationsAndData(),
+    getCachedAqhiStationsAndData(),
+  ]);
+
+  const [wxRow, aqStation, flickr] = await Promise.all([
+    findWeatherStation(lat, lng, station_code ?? null, operator, weatherBulk),
+    findNearestAqhi(lat, lng, aqhiBulk),
+    buildFlickrImageOuter(todayRow, deviceHeight, deviceWidth),
+  ]);
+
+  if (
+    wxRow
+    && (wxRow.humidity == null || wxRow.humidity === '')
+    && todayRow?.humidity != null
+  ) {
+    wxRow.humidity = todayRow.humidity;
+  }
+
+  return {
+    wxRow,
+    aqStation,
+    imageOuter: flickr.imageOuter,
+    message: flickr.message,
+  };
+}
+
+function buildWeathersResponse(global, loc, lang) {
+  const { todayRow, warningsRows, tipsRows, heatIndexRow, typhoonRows, forecasts } = global;
+  const { wxRow, aqStation, imageOuter, message } = loc;
+  const firstFc = forecasts[0];
+
+  const dataPayload = omitNil({
+    day: toDateStr(todayRow.forecast_day),
+    weather: todayRow.weather,
+    temperature: todayRow.temperature,
+    humidity: todayRow.humidity,
+    uv: todayRow.uv,
+    update_time: wxRow.sd_update_time ?? todayRow.update_time,
+    sun_rise_time: todayRow.sun_rise_time,
+    sun_set_time: todayRow.sun_set_time,
+    moon_rise_time: todayRow.moon_rise_time,
+    moon_set_time: todayRow.moon_set_time,
+    tide_info: todayRow.tide_info,
+    astronomical_update_time:
+      todayRow.astronomical_update_time instanceof Date
+        ? todayRow.astronomical_update_time.toISOString()
+        : todayRow.astronomical_update_time,
+    detail: isEng(lang) ? todayRow.eng_detail : todayRow.chi_detail,
+    forecast_general: isEng(lang) ? todayRow.eng_forecast_general : todayRow.chi_forecast_general,
+    id: Math.floor(Date.now() / 1000),
+    max_temp: firstFc?.max_temperature ?? null,
+    min_temp: firstFc?.min_temperature ?? null,
+    station_code: wxRow.code,
+    station_lat: wxRow.lat != null ? Number(wxRow.lat) : null,
+    station_lng: wxRow.lng != null ? Number(wxRow.lng) : null,
+    station_temperature: naturalNumber(wxRow.temperature),
+    station_humidity: naturalNumber(wxRow.humidity),
+    station_max_temp: naturalNumber(wxRow.max_temp),
+    station_min_temp: naturalNumber(wxRow.min_temp),
+    location: isEng(lang) ? wxRow.eng_name : wxRow.chi_name,
+    image_data: imageOuter,
+    forecasts: forecasts.map((f) => buildForecastNode(f, lang)),
+    warnings: warningsRows.map((w) => buildWarningNode(w, lang)),
+    typhoons: typhoonRows.map((t) =>
+      omitNil({
+        hko_id: t.hko_id,
+        data_type: t.data_type,
+        name: isEng(lang) ? t.eng_name : t.chi_name,
+      }),
+    ),
+    special_weather_tips: tipsRows.map((t) =>
+      omitNil({
+        time: t.time instanceof Date ? t.time.toISOString() : t.time,
+        title: isEng(lang) ? t.eng_title : t.chi_title,
+        content: isEng(lang) ? t.eng_content : t.chi_content,
+      }),
+    ),
+    heat_index: heatIndexRow
+      ? omitNil({
+          time: heatIndexRow.time instanceof Date ? heatIndexRow.time.toISOString() : heatIndexRow.time,
+          warning_type: heatIndexRow.warning_type,
+          title: isEng(lang) ? heatIndexRow.eng_title : heatIndexRow.chi_title,
+          content: isEng(lang) ? heatIndexRow.eng_content : heatIndexRow.chi_content,
+        })
+      : undefined,
+    aqhi: todayRow.aqhi_current,
+    aqhi_update_time:
+      todayRow.aqhi_update_time instanceof Date
+        ? todayRow.aqhi_update_time.toISOString()
+        : todayRow.aqhi_update_time,
+    aqhi_forecast: isEng(lang) ? todayRow.eng_aqhi_forecast : todayRow.chi_aqhi_forecast,
+  });
+
+  if (aqStation) {
+    dataPayload.aqhi_station = {
+      aqhi_index: aqStation.aqhi_index,
+      name: isEng(lang) ? aqStation.eng_name : aqStation.chi_name,
+      station_type: aqStation.station_type,
+      update_time:
+        aqStation.update_time instanceof Date ? aqStation.update_time.toISOString() : aqStation.update_time,
+    };
+  }
+
+  return omitNil({ success: true, info: message, data: omitNil(dataPayload) });
 }
 
 router.post('/devices', async (req, res) => {
@@ -319,10 +537,8 @@ router.post('/station_data.json', async (req, res) => {
   logger.info(`operator filter: ${operator}`);
 
   try {
-    const stationsMap = await getAllWeatherStations();
+    const { stationsMap, dataMap } = await getCachedWeatherStationsAndData();
     const stations = filterStationsByOperator([...stationsMap.values()], operator);
-
-    const dataMap = await getAllStationData();
     const freshCutoffMs = Date.now() - 3 * 3600 * 1000;
 
     for (const st of stations) {
@@ -383,7 +599,7 @@ router.post('/weather_stations.json', async (req, res) => {
   let rows;
 
   try {
-    const stationsMap = await getAllWeatherStations();
+    const { stationsMap } = await getCachedWeatherStationsAndData();
     const filterOperator = !operator || String(operator).trim() === '' ? '' : String(operator);
     rows = filterStationsByOperator([...stationsMap.values()], filterOperator);
     rows.sort((a, b) => String(a.eng_name ?? '').localeCompare(String(b.eng_name ?? '')));
@@ -447,11 +663,10 @@ router.post('/aqhi_stations.json', async (req, res) => {
   const cached = await getCache(cacheKey);
   if (cached) return res.json(cached);
 
-  const stationsMap = await getAllAqhiStations();
+  const { stationsMap, dataMap: aqhiMap } = await getCachedAqhiStationsAndData();
   const stations = [...stationsMap.values()].sort((a, b) =>
     String(a.eng_name ?? '').localeCompare(String(b.eng_name ?? '')),
   );
-  const aqhiMap = await getAllAqhiStationData();
 
   const response = {
     success: true,
@@ -475,21 +690,8 @@ router.post('/aqhi_stations.json', async (req, res) => {
 });
 
 router.post('/weathers.json', async (req, res) => {
-  let message = '';
   try {
     const api = req.body.api ?? {};
-    const cacheKey = `api:weathers:${sha1Hex(JSON.stringify({
-      lat: Number.parseFloat(Number(api.lat ?? 22.301944).toFixed(4)),
-      lng: Number.parseFloat(Number(api.lng ?? 114.174297).toFixed(4)),
-      station_code: String(api.station_code ?? '').trim().toLowerCase(),
-      operator: api.operator ? String(api.operator).trim().toLowerCase() : '',
-      lang: api.lang ?? 'en',
-      height: Number.parseInt(api.height ?? '0', 10),
-      width: Number.parseInt(api.width ?? '0', 10),
-      flickr: ENABLE_FLICKR_PHOTO ? '1' : '0',
-    }))}`;
-    const cached = await getCache(cacheKey);
-    if (cached) return res.json(cached);
 
     let lat = api.lat ?? 22.301944;
     let lng = api.lng ?? 114.174297;
@@ -503,153 +705,88 @@ router.post('/weathers.json', async (req, res) => {
     const lang = api.lang ?? 'en';
     const deviceHeight = Number.parseInt(api.height ?? '0', 10);
     const deviceWidth = Number.parseInt(api.width ?? '0', 10);
+    const stationCodeLc = String(station_code ?? '').trim().toLowerCase();
+    const operatorKey = operator ?? '';
 
-    const hkTodayIso = DateTime.now().setZone('Asia/Hong_Kong').toISODate();
-    const hkTodayMidnightMs = DateTime.fromISO(hkTodayIso, { zone: 'Asia/Hong_Kong' })
-      .startOf('day')
-      .toMillis();
+    const cacheParams = {
+      lat,
+      lng,
+      station_code: stationCodeLc,
+      operator: operatorKey,
+      lang,
+      deviceHeight,
+      deviceWidth,
+    };
+    const fullCacheKey = weathersFullCacheKey(cacheParams);
+    const locCacheKey = weathersLocCacheKey(cacheParams);
 
-    const todayRow = await getToday();
+    const [fullCached, globalCached, locCached] = await Promise.all([
+      getCache(fullCacheKey),
+      getCache(WEATHERS_GLOBAL_CACHE_KEY),
+      getCache(locCacheKey),
+    ]);
 
-    const warningsRows = await getWarnings();
-    warningsRows.sort((a, b) => warningSortOrder(a.warning_type) - warningSortOrder(b.warning_type));
+    if (fullCached) return res.json(fullCached);
 
-    const tipsRows = await getSpecialWeatherTips();
+    const hkTodayIso = DateTime.now().setZone(HK).toISODate();
+    const hkTodayMidnightMs = DateTime.fromISO(hkTodayIso, { zone: HK }).startOf('day').toMillis();
 
-    const heatIndexFull = await getHeatIndex();
-    const heatIndexRow =
-      heatIndexFull && heatIndexFull.time && new Date(heatIndexFull.time).getTime() >= hkTodayMidnightMs
-        ? heatIndexFull
-        : null;
+    let global = globalCached;
+    let loc = locCached;
 
-    let typhoonRows = [];
-    if (todayRow?.typhoon_id && String(todayRow.typhoon_id).trim()) {
-      const ids = todayRow.typhoon_id.split(/,/).map((x) => x.trim()).filter(Boolean).map(Number).filter((n) => !Number.isNaN(n));
-      if (ids.length) typhoonRows = await getTyphoons(ids);
+    if (!global && !loc) {
+      const [globalBundle] = await Promise.all([
+        fetchWeathersGlobalBundle(hkTodayIso, hkTodayMidnightMs),
+        getCachedWeatherStationsAndData(),
+        getCachedAqhiStationsAndData(),
+      ]);
+      global = globalBundle;
+      setCacheInBackground(WEATHERS_GLOBAL_CACHE_KEY, global);
+      loc = await fetchWeathersLocationBundle({
+        lat,
+        lng,
+        station_code: stationCodeLc || null,
+        operator: operator === 'all' ? 'all' : undefined,
+        todayRow: global.todayRow,
+        deviceHeight,
+        deviceWidth,
+      });
+      setCacheInBackground(locCacheKey, loc);
+    } else {
+      if (!global) {
+        global = await fetchWeathersGlobalBundle(hkTodayIso, hkTodayMidnightMs);
+        setCacheInBackground(WEATHERS_GLOBAL_CACHE_KEY, global);
+      }
+      if (!loc) {
+        loc = await fetchWeathersLocationBundle({
+          lat,
+          lng,
+          station_code: stationCodeLc || null,
+          operator: operator === 'all' ? 'all' : undefined,
+          todayRow: global.todayRow,
+          deviceHeight,
+          deviceWidth,
+        });
+        setCacheInBackground(locCacheKey, loc);
+      }
     }
 
-    const forecastsMap = await getAllForecasts();
-    const forecasts = [...forecastsMap.values()]
-      .filter((f) => f.forecast_day && String(f.forecast_day) >= hkTodayIso)
-      .sort((a, b) => String(a.forecast_day).localeCompare(String(b.forecast_day)));
-
-    const wxRow = await findWeatherStation(lat, lng, station_code ?? null,
-      operator === 'all' ? 'all' : undefined);
-
+    const { todayRow, wxRow } = { todayRow: global.todayRow, wxRow: loc.wxRow };
     if (!todayRow || !wxRow || wxRow.sd_update_time == null) {
       const missing = [];
       if (!todayRow) missing.push('today');
       if (!wxRow) missing.push('weather_station');
       else if (wxRow.sd_update_time == null) missing.push('station_data');
       logger.warn(`weathers.json 503 - missing: ${missing.join(',')} (station_code=${station_code ?? ''})`);
-      return res.status(503).json({ success: false, info: `no data yet (missing: ${missing.join(',')})`, data: null });
+      return res.status(503).json({
+        success: false,
+        info: `no data yet (missing: ${missing.join(',')})`,
+        data: null,
+      });
     }
 
-    if (
-      (wxRow.humidity == null || wxRow.humidity === '')
-      && todayRow.humidity != null
-    ) {
-      wxRow.humidity = todayRow.humidity;
-    }
-
-    const aqStation = await findNearestAqhi(lat, lng);
-
-    let imageOuter;
-    if (!ENABLE_FLICKR_PHOTO) {
-      imageOuter = omitNil({ photo_id: -1 });
-      message = FLICKR_DOWN;
-    } else {
-      const hourHK = DateTime.now().setZone('Asia/Hong_Kong').hour;
-      const pool = await flickrPhotosForWeather(String(todayRow.weather ?? ''), hourHK);
-      const photoPick = pool?.length ? pool[Math.floor(Math.random() * pool.length)] : null;
-      const high =
-        deviceHeight > 1280 || deviceWidth > 1000 ? !!(photoPick?.high_res_url) : false;
-
-      imageOuter =
-        !photoPick
-          ? omitNil({ owner_url: null, owner_name: null, image_url: null })
-          : omitNil({
-              owner_name: truncate(photoPick.owner_name ?? '', 20),
-              owner_url: photoPick.owner_url,
-              image_url: high && photoPick.high_res_url ? photoPick.high_res_url : photoPick.mid_res_url,
-            });
-    }
-
-    const firstFc = forecasts[0];
-    const dataPayload = omitNil({
-      day: toDateStr(todayRow.forecast_day),
-      weather: todayRow.weather,
-      temperature: todayRow.temperature,
-      humidity: todayRow.humidity,
-      uv: todayRow.uv,
-      update_time: wxRow.sd_update_time ?? todayRow.update_time,
-      sun_rise_time: todayRow.sun_rise_time,
-      sun_set_time: todayRow.sun_set_time,
-      moon_rise_time: todayRow.moon_rise_time,
-      moon_set_time: todayRow.moon_set_time,
-      tide_info: todayRow.tide_info,
-      astronomical_update_time:
-        todayRow.astronomical_update_time instanceof Date
-          ? todayRow.astronomical_update_time.toISOString()
-          : todayRow.astronomical_update_time,
-      detail: isEng(lang) ? todayRow.eng_detail : todayRow.chi_detail,
-      forecast_general: isEng(lang) ? todayRow.eng_forecast_general : todayRow.chi_forecast_general,
-      id: Math.floor(Date.now() / 1000),
-      max_temp: firstFc?.max_temperature ?? null,
-      min_temp: firstFc?.min_temperature ?? null,
-      station_code: wxRow.code,
-      station_lat: wxRow.lat != null ? Number(wxRow.lat) : null,
-      station_lng: wxRow.lng != null ? Number(wxRow.lng) : null,
-      station_temperature: naturalNumber(wxRow.temperature),
-      station_humidity: naturalNumber(wxRow.humidity),
-      station_max_temp: naturalNumber(wxRow.max_temp),
-      station_min_temp: naturalNumber(wxRow.min_temp),
-      location: isEng(lang) ? wxRow.eng_name : wxRow.chi_name,
-      image_data: imageOuter,
-      forecasts: forecasts.map((f) => buildForecastNode(f, lang)),
-      warnings: warningsRows.map((w) => buildWarningNode(w, lang)),
-      typhoons: typhoonRows.map((t) =>
-        omitNil({
-          hko_id: t.hko_id,
-          data_type: t.data_type,
-          name: isEng(lang) ? t.eng_name : t.chi_name,
-        }),
-      ),
-      special_weather_tips: tipsRows.map((t) =>
-        omitNil({
-          time: t.time instanceof Date ? t.time.toISOString() : t.time,
-          title: isEng(lang) ? t.eng_title : t.chi_title,
-          content: isEng(lang) ? t.eng_content : t.chi_content,
-        }),
-      ),
-      heat_index: heatIndexRow
-        ? omitNil({
-            time: heatIndexRow.time instanceof Date ? heatIndexRow.time.toISOString() : heatIndexRow.time,
-            warning_type: heatIndexRow.warning_type,
-            title: isEng(lang) ? heatIndexRow.eng_title : heatIndexRow.chi_title,
-            content: isEng(lang) ? heatIndexRow.eng_content : heatIndexRow.chi_content,
-          })
-        : undefined,
-      aqhi: todayRow.aqhi_current,
-      aqhi_update_time:
-        todayRow.aqhi_update_time instanceof Date
-          ? todayRow.aqhi_update_time.toISOString()
-          : todayRow.aqhi_update_time,
-      aqhi_forecast: isEng(lang) ? todayRow.eng_aqhi_forecast : todayRow.chi_aqhi_forecast,
-    });
-
-    if (aqStation) {
-      dataPayload.aqhi_station = {
-        aqhi_index: aqStation.aqhi_index,
-        name: isEng(lang) ? aqStation.eng_name : aqStation.chi_name,
-        station_type: aqStation.station_type,
-        update_time:
-          aqStation.update_time instanceof Date ? aqStation.update_time.toISOString() : aqStation.update_time,
-      }
-    }
-
-    const response = omitNil({ success: true, info: message, data: omitNil(dataPayload) });
-    await setCache(cacheKey, response);
+    const response = buildWeathersResponse(global, loc, lang);
+    setCacheInBackground(fullCacheKey, response);
     res.json(response);
   } catch (e) {
     logger.error(e);
