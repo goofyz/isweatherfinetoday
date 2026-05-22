@@ -53,7 +53,7 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
         time: w.time,
         detail: w[`${prefix}_detail`] ?? null,
       }));
-      await insertNotification(reg_ids, 'warn', JSON.stringify(warnings), 'warnings');
+      await insertNotification(reg_ids, 'warnings', JSON.stringify(warnings), 'warnings');
     }
 
     if (sendTips) {
