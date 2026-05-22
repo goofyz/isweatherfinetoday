@@ -78,7 +78,7 @@ export async function runFlickrPhotoUpdater() {
   });
   const photos = asArray(resp?.photos?.photo).filter(Boolean);
   for (const ph of photos) {
-    await upsertFromSearchPhoto(ph).catch((e) => logger.error('flickr photo', ph?.id, e));
+    await upsertFromSearchPhoto(ph).catch((e) => logger.error(`flickr photo error ${ph?.id}`, ph?.id, e));
   }
 
   const cutoffMs = Date.now() - 10 * 24 * 3600 * 1000;
