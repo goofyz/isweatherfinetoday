@@ -51,7 +51,7 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
       const warnings = stored.map((w) => ({
         warning_type: w.warning_type,
         time: w.time,
-        detail: w[`${prefix}_detail`] ?? null,
+        detail: w[`${prefix}_detail`] ?? '',
       }));
       await insertNotification(reg_ids, 'warnings', JSON.stringify(warnings), 'warnings');
     }
@@ -61,9 +61,9 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
       const prefix = getLangPrefix(lang);
       const stored = await getSpecialWeatherTips();
       const tips = stored.map((t) => ({
-        title: t[`${prefix}_title`] ?? null,
+        title: t[`${prefix}_title`] ?? '',
         time: t.time,
-        content: t[`${prefix}_content`] ?? null,
+        content: t[`${prefix}_content`] ?? '',
       }));
       await insertNotification(reg_ids, 'tips', JSON.stringify(tips), 'tips');
     }
@@ -74,8 +74,8 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
       const heat = await getHeatIndex();
       const heats = heat
         ? [{
-            [`${prefix}_title`]: heat[`${prefix}_title`] ?? null,
-            [`${prefix}_content`]: heat[`${prefix}_content`] ?? null,
+            [`${prefix}_title`]: heat[`${prefix}_title`] ?? '',
+            [`${prefix}_content`]: heat[`${prefix}_content`] ?? '',
             time: heat.time,
             warning_type: heat.warning_type,
           }]
