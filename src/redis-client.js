@@ -4,6 +4,9 @@ import { REDIS_URL, REDIS_CACHE_TTL_SECONDS } from './config.js';
 
 const redisClient = REDIS_URL ? createClient({ url: REDIS_URL }) : null;
 
+// Cache statistics tracking
+let cacheStats = { hits: 0, misses: 0 };
+
 export async function connectRedis() {
   if (!redisClient) return;
 
@@ -29,12 +32,22 @@ export async function disconnectRedis() {
 }
 
 export async function getCache(key) {
-  if (!redisClient) return null;
+  if (!redisClient) {
+    cacheStats.misses++;
+    return null;
+  }
   try {
     const cached = await redisClient.get(key);
-    return cached ? JSON.parse(cached) : null;
+    if (cached) {
+      cacheStats.hits++;
+      return JSON.parse(cached);
+    } else {
+      cacheStats.misses++;
+      return null;
+    }
   } catch (error) {
     logger.warn('Redis get failed:', error);
+    cacheStats.misses++;
     return null;
   }
 }
@@ -55,6 +68,21 @@ export async function setCache(key, value, ttlSeconds = REDIS_CACHE_TTL_SECONDS)
 
 export function setCacheInBackground(key, value, ttlSeconds = REDIS_CACHE_TTL_SECONDS) {
   void setCache(key, value, ttlSeconds);
+}
+
+export function getCacheStats() {
+  const total = cacheStats.hits + cacheStats.misses;
+  const ratio = total > 0 ? ((cacheStats.hits / total) * 100).toFixed(2) : 0;
+  return {
+    hits: cacheStats.hits,
+    misses: cacheStats.misses,
+    total,
+    hitRatio: `${ratio}%`,
+  };
+}
+
+export function resetCacheStats() {
+  cacheStats = { hits: 0, misses: 0 };
 }
 
 const STATION_DATA_KEY = 'weather:station_data';

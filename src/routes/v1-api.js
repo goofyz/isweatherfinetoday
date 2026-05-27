@@ -23,6 +23,8 @@ import {
   getAllForecasts,
   setCache,
   setCacheInBackground,
+  getCacheStats,
+  resetCacheStats,
 } from '../redis-client.js';
 import {
   getCachedAqhiStationsAndData,
@@ -796,6 +798,26 @@ router.post('/weathers.json', async (req, res) => {
   } catch (e) {
     logger.error(e);
     res.status(500).json({ success: false, info: String(e.message ?? e), data: null });
+  }
+});
+
+router.get('/cache-stats', async (req, res) => {
+  try {
+    const stats = getCacheStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    logger.error('cache-stats error:', error);
+    res.status(500).json({ success: false, info: String(error.message ?? error) });
+  }
+});
+
+router.post('/cache-stats/reset', async (req, res) => {
+  try {
+    resetCacheStats();
+    res.json({ success: true, info: 'Cache statistics reset' });
+  } catch (error) {
+    logger.error('cache-stats/reset error:', error);
+    res.status(500).json({ success: false, info: String(error.message ?? error) });
   }
 });
 
