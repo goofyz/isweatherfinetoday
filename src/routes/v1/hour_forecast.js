@@ -1,12 +1,12 @@
 import express from 'express';
-import { getCache, setCache, getHourForecast, omitNil, logger } from './common.js';
+import { getCacheWithStats, setCache, getHourForecast, omitNil, logger } from './common.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   const code = String(req.body.code ?? '').trim().toLowerCase();
   const cacheKey = `api:hour_forecast:${code || 'all'}`;
-  const cached = await getCache(cacheKey);
+  const cached = await getCacheWithStats(cacheKey);
   if (cached) return res.json(cached);
 
   try {

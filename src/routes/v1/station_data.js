@@ -1,5 +1,5 @@
 import express from 'express';
-import { getCache, setCache, getCachedWeatherStationsAndData, filterStationsByOperator, omitNil, logger } from './common.js';
+import { getCacheWithStats, setCache, getCachedWeatherStationsAndData, filterStationsByOperator, omitNil, logger } from './common.js';
 
 const router = express.Router();
 
@@ -9,7 +9,7 @@ router.post('/', async (req, res) => {
     req.query.operator;
 
   const cacheKey = `api:station_data:${operator ?? 'null'}`;
-  const cached = await getCache(cacheKey);
+  const cached = await getCacheWithStats(cacheKey);
   if (cached) return res.json(cached);
 
   let rows = [];

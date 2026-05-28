@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   getCache,
+  getCacheWithStats,
   setCacheInBackground,
   WEATHERS_GLOBAL_CACHE_KEY,
   weathersFullCacheKey,
@@ -49,7 +50,7 @@ router.post('/', async (req, res) => {
     const locCacheKey = weathersLocCacheKey(cacheParams);
 
     const [fullCached, globalCached, locCached] = await Promise.all([
-      getCache(fullCacheKey),
+      getCacheWithStats(fullCacheKey),
       getCache(WEATHERS_GLOBAL_CACHE_KEY),
       getCache(locCacheKey),
     ]);

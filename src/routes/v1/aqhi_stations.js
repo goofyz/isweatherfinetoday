@@ -1,12 +1,12 @@
 import express from 'express';
-import { getCache, setCache, getCachedAqhiStationsAndData, omitNil, isEng } from './common.js';
+import { getCacheWithStats, setCache, getCachedAqhiStationsAndData, omitNil, isEng } from './common.js';
 
 const router = express.Router();
 
 router.post('/', async (req, res) => {
   const lang = req.body.lang || 'en';
   const cacheKey = 'api:aqhi_stations';
-  const cached = await getCache(cacheKey);
+  const cached = await getCacheWithStats(cacheKey);
   if (cached) return res.json(cached);
 
   const { stationsMap, dataMap: aqhiMap } = await getCachedAqhiStationsAndData();

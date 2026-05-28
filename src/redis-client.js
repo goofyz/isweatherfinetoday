@@ -33,21 +33,13 @@ export async function disconnectRedis() {
 
 export async function getCache(key) {
   if (!redisClient) {
-    cacheStats.misses++;
     return null;
   }
   try {
     const cached = await redisClient.get(key);
-    if (cached) {
-      cacheStats.hits++;
-      return JSON.parse(cached);
-    } else {
-      cacheStats.misses++;
-      return null;
-    }
+    return cached ? JSON.parse(cached) : null;
   } catch (error) {
     logger.warn('Redis get failed:', error);
-    cacheStats.misses++;
     return null;
   }
 }
@@ -81,8 +73,16 @@ export function getCacheStats() {
   };
 }
 
-export function resetCacheStats() {
-  cacheStats = { hits: 0, misses: 0 };
+export function recordCacheHit() {
+  cacheStats.hits++;
+}
+
+export function recordCacheMiss() {
+  cacheStats.misses++;
+}
+
+export function setCacheStats(hits, misses) {
+  cacheStats = { hits, misses };
 }
 
 const STATION_DATA_KEY = 'weather:station_data';

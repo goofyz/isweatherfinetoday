@@ -23,7 +23,8 @@ import {
   setCache,
   setCacheInBackground,
   getCacheStats,
-  resetCacheStats,
+  recordCacheHit,
+  recordCacheMiss,
 } from '../../redis-client.js';
 import {
   getCachedAqhiStationsAndData,
@@ -37,8 +38,19 @@ function sha1Hex(s) {
   return createHash('sha1').update(s).digest('hex');
 }
 
+// Wrapper function that tracks cache stats for API calls only
+async function getCacheWithStats(key) {
+  const cached = await getCache(key);
+  if (cached) {
+    recordCacheHit();
+  } else {
+    recordCacheMiss();
+  }
+  return cached;
+}
+
 async function fromCacheOrFetch(cacheKey, fetcher) {
-  const cached = await getCache(cacheKey);
+  const cached = await getCacheWithStats(cacheKey);
   if (cached) return cached;
   const payload = await fetcher();
   await setCache(cacheKey, payload);
@@ -467,6 +479,7 @@ export {
   fetchWeathersLocationBundle,
   buildWeathersResponse,
   getCache,
+  getCacheWithStats,
   setCache,
   setCacheInBackground,
   getCachedWeatherStationsAndData,
@@ -485,6 +498,5 @@ export {
   logger,
   DateTime,
   HK,
-  getCacheStats,
-  resetCacheStats,
+  getCacheStats
 };
