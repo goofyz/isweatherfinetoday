@@ -74,8 +74,8 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
       const heat = await getHeatIndex();
       const heats = heat
         ? [{
-            [`${prefix}_title`]: heat[`${prefix}_title`] ?? '',
-            [`${prefix}_content`]: heat[`${prefix}_content`] ?? '',
+            title: heat[`${prefix}_title`] ?? '',
+            content: heat[`${prefix}_content`] ?? '',
             time: heat.time,
             warning_type: heat.warning_type,
           }]
