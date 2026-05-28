@@ -80,7 +80,7 @@ async function addMsg(sendWarning, sendTips, sendHeat, lang) {
             warning_type: heat.warning_type,
           }]
         : [];
-      await insertNotification(reg_ids, 'tips', JSON.stringify(heats), 'heat');
+      await insertNotification(reg_ids, 'heat', JSON.stringify(heats), 'heat');
     }
   }
 }
