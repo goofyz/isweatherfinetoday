@@ -1,6 +1,6 @@
 import { createClient } from 'redis';
 import logger from './logger.js';
-import { REDIS_URL, REDIS_CACHE_TTL_SECONDS } from './config.js';
+import { REDIS_URL, REDIS_CACHE_TTL_SECONDS, ENABLE_API_LOGGING } from './config.js';
 
 const redisClient = REDIS_URL ? createClient({ url: REDIS_URL }) : null;
 
@@ -54,7 +54,7 @@ export async function setCache(key, value, ttlSeconds = REDIS_CACHE_TTL_SECONDS)
       await redisClient.set(key, payload);
     }
     try {
-      if (typeof key === 'string' && key.startsWith('api:')) {
+      if (ENABLE_API_LOGGING && typeof key === 'string' && key.startsWith('api:')) {
         const payloadSize = payload.length;
         logger.info(`Redis cache created: key=${key}, size=${payloadSize}B, ttl=${ttlSeconds}s`);
       }
@@ -518,7 +518,7 @@ export async function deleteCacheByPattern(pattern) {
         await redisClient.del(normalizedKey);
         deletedKeys.push(normalizedKey);
         try {
-          if (normalizedKey.startsWith('api:')) logger.info(`Redis deleted cache ${normalizedKey}`);
+          if (ENABLE_API_LOGGING && normalizedKey.startsWith('api:')) logger.info(`Redis deleted cache ${normalizedKey}`);
         } catch (e) {
           // ignore logging errors
         }
@@ -527,7 +527,7 @@ export async function deleteCacheByPattern(pattern) {
       }
     }
     try {
-      if (pattern && String(pattern).startsWith('api:') && deletedKeys.length > 0) {
+      if (ENABLE_API_LOGGING && pattern && String(pattern).startsWith('api:') && deletedKeys.length > 0) {
         logger.info(`Redis delete pattern ${pattern} removed ${deletedKeys.length} keys`);
       }
     } catch (e) {

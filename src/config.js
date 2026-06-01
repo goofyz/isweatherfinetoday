@@ -50,6 +50,7 @@ export const DATABASE_URL =
 
 export const ENABLE_FLICKR_PHOTO = process.env.ENABLE_FLICKR_PHOTO !== 'n';
 export const ENABLE_API_LOGGING = process.env.ENABLE_API_LOGGING === 'y';
+logger.info("API logging is " + (ENABLE_API_LOGGING ? "enabled" : "disabled"));
 
 export const FCM_API_KEY = process.env.FCM_API_KEY || '';
 
