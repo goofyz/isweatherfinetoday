@@ -2,7 +2,7 @@ import { parse } from 'csv-parse/sync';
 import { REGEX_STATION_DATA_TIME } from '../locales.js';
 import { getResponse } from '../request-helper.js';
 import logger from '../logger.js';
-import { getWeatherStation, setStationData } from '../redis-client.js';
+import { getWeatherStation, setStationData, deleteCacheByPattern } from '../redis-client.js';
 
 function isNumber(string) {
   return !Number.isNaN(parseFloat(string));
@@ -55,6 +55,8 @@ export async function runWeatherStationUpdater() {
     };
     await setStationData(code, fields);
   }
+  await deleteCacheByPattern('api:weathers*');
+  await deleteCacheByPattern('api:station_data*');
   logger.info('end station data');
   logger.info('Weather.Station - end');
 }

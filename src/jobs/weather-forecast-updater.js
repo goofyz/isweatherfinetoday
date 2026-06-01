@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon';
 import { getJson } from '../request-helper.js';
 import logger from '../logger.js';
-import { mergeForecast, mergeToday } from '../redis-client.js';
+import { mergeForecast, mergeToday, deleteCacheByPattern } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -74,9 +74,11 @@ export async function runWeatherForecastUpdater() {
         chi_forecast_general: chiForecastGeneral,
       });
     }
+  
+    await deleteCacheByPattern('api:weathers*');
   } catch (e) {
     // do nothing
-    logger.info('Weather.forecast - error fetching/parsing forecast', e);
+    logger.error(e, 'Weather.forecast - error fetching/parsing forecast');
   }
   logger.info('Weather.forecast - end');
 }

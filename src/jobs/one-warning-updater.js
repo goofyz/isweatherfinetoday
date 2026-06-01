@@ -3,7 +3,7 @@ import { URL_WARNING_SOURCE } from '../config.js';
 import { getJson, getRemotePageAsString } from '../request-helper.js';
 import { runGcmGenerator } from './gcm-generator.js';
 import logger from '../logger.js';
-import { getWarnings, setWarnings } from '../redis-client.js';
+import { getWarnings, setWarnings, deleteCacheByPattern } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -222,11 +222,12 @@ export async function runOneWarningUpdater() {
     if (sendWarning) {
       logger.info(`Warning - save warnings count: ${newWarnings.length}`);
       logger.info(`Content: ${JSON.stringify(json)}`);
+      await deleteCacheByPattern('api:weathers*');
       await setWarnings(newWarnings);
     }
   } catch (e) {
     // do nothing
-    logger.info('OneWarningUpdater - error fetching/parsing warnings', e);
+    logger.error(e, 'OneWarningUpdater - error fetching/parsing warnings');
   }
 
   const sendTip = false;

@@ -2,7 +2,7 @@ import { DateTime } from 'luxon';
 import { getJson } from '../request-helper.js';
 import { handleTemperature, handleWindDirection } from './weather-station-updater.js';
 import logger from '../logger.js';
-import { getWeatherStation, setStationData, setWeatherStation } from '../redis-client.js';
+import { getWeatherStation, setStationData, setWeatherStation, deleteCacheByPattern } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -50,5 +50,7 @@ export async function runCommunityStationUpdater() {
       update_time: updateTime,
     });
   }
+  await deleteCacheByPattern('api:weathers*');
+  await deleteCacheByPattern('api:station_data*');
   logger.info('Community.Station - end');
 }

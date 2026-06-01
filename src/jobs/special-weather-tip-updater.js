@@ -3,7 +3,7 @@ import { REGEX_SPECIAL_WEATHER_TIPS_CONTENT } from '../locales.js';
 import { getRemotePageAsString } from '../request-helper.js';
 import { runGcmGenerator } from './gcm-generator.js';
 import logger from '../logger.js';
-import { getSpecialWeatherTips, setSpecialWeatherTips } from '../redis-client.js';
+import { getSpecialWeatherTips, setSpecialWeatherTips, deleteCacheByPattern } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -106,11 +106,12 @@ export async function runSpecialWeatherTipUpdater() {
     if (sendTip) {
       logger.info(`SpecialWeatherTips: ${newTips.length}`);
       await setSpecialWeatherTips(newTips);
+      await deleteCacheByPattern('api:weathers*');
       await runGcmGenerator(false, true, false);
     }
   }
   catch (e) {
-    logger.info('SpecialWeatherTip - error fetching/parsing tips', e);
+    logger.error(e, 'SpecialWeatherTip - error fetching/parsing tips');
   }
 
   logger.info('SpecialWeatherTip - end');

@@ -2,7 +2,7 @@ import { DateTime } from 'luxon';
 import { getJson } from '../request-helper.js';
 import { runGcmGenerator } from './gcm-generator.js';
 import logger from '../logger.js';
-import { getHeatIndex, setHeatIndex } from '../redis-client.js';
+import { getHeatIndex, setHeatIndex, deleteCacheByPattern} from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -41,6 +41,8 @@ export async function runHeatIndexUpdater() {
 
   if (changed) {
     logger.info(`HeatIndexUpdater - Changed ? ${changed}`);
+    
+    await deleteCacheByPattern('api:weathers*');
     await runGcmGenerator(false, false, true);
   }
 

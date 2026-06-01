@@ -2,7 +2,7 @@ import { DateTime } from 'luxon';
 import { getJson } from '../request-helper.js';
 import { htmlText, squish } from './html-utils.js';
 import logger from '../logger.js';
-import { getToday, mergeToday, getTyphoon, setTyphoon } from '../redis-client.js';
+import { getToday, mergeToday, getTyphoon, setTyphoon, deleteCacheByPattern } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -150,6 +150,8 @@ export async function runOneUpdater() {
     tide_info: merged.tide_info ?? null,
     astronomical_update_time: merged.astronomical_update_time ?? null,
   });
+
+  await deleteCacheByPattern('api:weathers*');
 
   logger.info('OneUpdater - End');
 }

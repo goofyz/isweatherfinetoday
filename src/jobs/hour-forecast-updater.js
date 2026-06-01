@@ -2,7 +2,7 @@ import { DateTime } from 'luxon';
 import { URL_HOUR_FORECAST_SOURCE } from '../config.js';
 import { getJson } from '../request-helper.js';
 import logger from '../logger.js';
-import { setHourForecast } from '../redis-client.js';
+import { setHourForecast, deleteCacheByPattern } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 const MAX_HOURS_MS = 2 * 24 * 60 * 60 * 1000;
@@ -91,5 +91,6 @@ async function updateData(code) {
 export async function runHourForecastUpdater() {
   logger.info(`Weather.Hour.Forecast - start`);
   for (const code of ALL) await updateData(code);
+  await deleteCacheByPattern('api:hour_forecast*');
   logger.info(`Weather.Hour.Forecast - end`);
 }

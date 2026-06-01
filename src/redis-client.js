@@ -53,6 +53,14 @@ export async function setCache(key, value, ttlSeconds = REDIS_CACHE_TTL_SECONDS)
     } else {
       await redisClient.set(key, payload);
     }
+    try {
+      if (typeof key === 'string' && key.startsWith('api:')) {
+        const payloadSize = payload.length;
+        logger.info(`Redis cache created: key=${key}, size=${payloadSize}B, ttl=${ttlSeconds}s`);
+      }
+    } catch (e) {
+      // swallow logging errors
+    }
   } catch (error) {
     logger.warn('Redis set failed:', error);
   }
@@ -491,5 +499,43 @@ export async function loadAqhiStations(stations) {
   for (const s of stations) {
     if (!s?.code) continue;
     await setAqhiStation(s);
+  }
+}
+
+export async function deleteCacheByPattern(pattern) {
+  if (!redisClient) return [];
+  const deletedKeys = [];
+  try {
+    for await (const key of redisClient.scanIterator({
+      MATCH: pattern,
+      COUNT: 100,
+    })) {
+      if (!key) continue;
+      const normalizedKey = typeof key === 'string' ? key : String(key ?? '');
+      // Skip empty keys which can appear in some Redis client implementations
+      if (!normalizedKey) continue;
+      try {
+        await redisClient.del(normalizedKey);
+        deletedKeys.push(normalizedKey);
+        try {
+          if (normalizedKey.startsWith('api:')) logger.info(`Redis deleted cache ${normalizedKey}`);
+        } catch (e) {
+          // ignore logging errors
+        }
+      } catch (delErr) {
+        logger.warn(delErr, `Redis del ${normalizedKey} failed.`);
+      }
+    }
+    try {
+      if (pattern && String(pattern).startsWith('api:') && deletedKeys.length > 0) {
+        logger.info(`Redis delete pattern ${pattern} removed ${deletedKeys.length} keys`);
+      }
+    } catch (e) {
+      // ignore logging errors
+    }
+    return deletedKeys;
+  } catch (error) {
+    logger.warn(error, `Redis delete pattern ${pattern} failed`);
+    return deletedKeys;
   }
 }

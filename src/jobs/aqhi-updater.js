@@ -4,7 +4,7 @@ import { DateTime } from 'luxon';
 import { REGEX_AQHI_CURRENT } from '../locales.js';
 import { get } from '../request-helper.js';
 import logger from '../logger.js';
-import { getAllAqhiStations, mergeToday, setAqhiStationData } from '../redis-client.js';
+import { getAllAqhiStations, mergeToday, setAqhiStationData, deleteCacheByPattern } from '../redis-client.js';
 
 const HK = 'Asia/Hong_Kong';
 
@@ -119,6 +119,8 @@ export async function runAqhiUpdater() {
       update_time: update_time ? update_time.toISOString() : null,
     });
   }
+  await deleteCacheByPattern('api:aqhi_stations*');
+  await deleteCacheByPattern('api:weathers*');
 
   logger.info(`AQHI - End`);
 }
