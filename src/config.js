@@ -48,9 +48,10 @@ export const DATABASE_URL =
   process.env.DATABASE_URL ||
   'postgres://postgres:abcd1234@localhost:5432/weatherindoubt6_development';
 
-export const ENABLE_FLICKR_PHOTO = process.env.ENABLE_FLICKR_PHOTO !== 'n';
-export const ENABLE_API_LOGGING = process.env.ENABLE_API_LOGGING === 'y';
-logger.info("API logging is " + (ENABLE_API_LOGGING ? "enabled" : "disabled"));
+export const ENABLE_SCHEDULER = process.env.ENABLE_SCHEDULER !== 'N';
+export const ENABLE_FLICKR_PHOTO = process.env.ENABLE_FLICKR_PHOTO !== 'N';
+export const ENABLE_API_LOGGING = process.env.ENABLE_API_LOGGING === 'Y';
+logger.info(`API logging: ${ENABLE_API_LOGGING ? "enabled" : "disabled"}, Scheduler: ${ENABLE_SCHEDULER ? "enabled" : "disabled"}, Flickr photo: ${ENABLE_FLICKR_PHOTO ? "enabled" : "disabled"}`);
 
 export const FCM_API_KEY = process.env.FCM_API_KEY || '';
 

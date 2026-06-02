@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import weather_stations from '../db/weather_stations.json' with { type: 'json' };
 import aqhi_stations from '../db/aqhi_stations.json' with { type: 'json' };
 
-import { PORT } from './config.js';
+import { PORT, ENABLE_SCHEDULER } from './config.js';
 import v1Api from './routes/v1-api.js';
 import { connectRedis, loadAqhiStations, loadWeatherStations } from './redis-client.js';
 import logger from './logger.js';
@@ -33,7 +33,10 @@ logger.info(
   `Loaded into Redis: weather_stations=${weather_stations.length}, aqhi_stations=${aqhi_stations.length}`,
 );
 
-await import('./scheduler.js');
+
+if (ENABLE_SCHEDULER) {
+  await import('./scheduler.js');
+}
 
 app.get('/', (_req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
