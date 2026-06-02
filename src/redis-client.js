@@ -11,14 +11,14 @@ export async function connectRedis() {
   if (!redisClient) return;
 
   redisClient.on('error', (error) => {
-    logger.warn('Redis client error:', error);
+    logger.warn(error, 'Redis client error:');
   });
 
   try {
     await redisClient.connect();
     logger.info('Connected to Redis.');
   } catch (error) {
-    logger.warn('Redis connection failed:', error);
+    logger.warn(error, 'Redis connection failed.');
   }
 }
 
@@ -27,7 +27,7 @@ export async function disconnectRedis() {
   try {
     await redisClient.disconnect();
   } catch (error) {
-    logger.warn('Redis disconnect failed:', error);
+    logger.warn(error, 'Redis disconnect failed.');
   }
 }
 
@@ -39,7 +39,7 @@ export async function getCache(key) {
     const cached = await redisClient.get(key);
     return cached ? JSON.parse(cached) : null;
   } catch (error) {
-    logger.warn('Redis get failed:', error);
+    logger.warn(error, 'Redis get failed.');
     return null;
   }
 }
@@ -62,7 +62,7 @@ export async function setCache(key, value, ttlSeconds = REDIS_CACHE_TTL_SECONDS)
       // swallow logging errors
     }
   } catch (error) {
-    logger.warn('Redis set failed:', error);
+    logger.warn(error, 'Redis set failed');
   }
 }
 
@@ -105,7 +105,7 @@ export async function setStationData(code, data) {
     });
     await redisClient.hSet(STATION_DATA_KEY, field, payload);
   } catch (error) {
-    logger.warn('Redis hSet station_data failed:', error);
+    logger.warn(error, 'Redis hSet station_data failed.');
   }
 }
 
@@ -116,7 +116,7 @@ export async function getStationData(code) {
     const raw = await redisClient.hGet(STATION_DATA_KEY, field);
     return raw ? JSON.parse(raw) : null;
   } catch (error) {
-    logger.warn('Redis hGet station_data failed:', error);
+    logger.warn(error, 'Redis hGet station_data failed.');
     return null;
   }
 }
@@ -130,11 +130,11 @@ export async function getAllStationData() {
       try {
         result.set(field, JSON.parse(raw));
       } catch (parseErr) {
-        logger.warn(`Redis station_data parse failed for ${field}:`, parseErr);
+        logger.warn(parseErr, `Redis station_data parse failed for ${field}.`);
       }
     }
   } catch (error) {
-    logger.warn('Redis hGetAll station_data failed:', error);
+    logger.warn(error, 'Redis hGetAll station_data failed.');
   }
   return result;
 }
@@ -162,7 +162,7 @@ async function getJsonKey(key) {
     const raw = await redisClient.get(key);
     return raw ? JSON.parse(raw) : null;
   } catch (error) {
-    logger.warn(`Redis get ${key} failed:`, error);
+    logger.warn(error, `Redis get ${key} failed.`);
     return null;
   }
 }
@@ -172,7 +172,7 @@ async function setJsonKey(key, value) {
   try {
     await redisClient.set(key, JSON.stringify(value));
   } catch (error) {
-    logger.warn(`Redis set ${key} failed:`, error);
+    logger.warn(error, `Redis set ${key} failed.`);
   }
 }
 
@@ -185,11 +185,11 @@ async function hGetAllJson(key) {
       try {
         result.set(field, JSON.parse(raw));
       } catch (parseErr) {
-        logger.warn(`Redis ${key} parse failed for ${field}:`, parseErr);
+        logger.warn(parseErr, `Redis ${key} parse failed for ${field}.`);
       }
     }
   } catch (error) {
-    logger.warn(`Redis hGetAll ${key} failed:`, error);
+    logger.warn(error, `Redis hGetAll ${key} failed.`);
   }
   return result;
 }
@@ -200,7 +200,7 @@ async function hGetJson(key, field) {
     const raw = await redisClient.hGet(key, field);
     return raw ? JSON.parse(raw) : null;
   } catch (error) {
-    logger.warn(`Redis hGet ${key}/${field} failed:`, error);
+    logger.warn(error, `Redis hGet ${key}/${field} failed.`);
     return null;
   }
 }
@@ -210,7 +210,7 @@ async function hSetJson(key, field, value) {
   try {
     await redisClient.hSet(key, field, JSON.stringify(value));
   } catch (error) {
-    logger.warn(`Redis hSet ${key}/${field} failed:`, error);
+    logger.warn(error, `Redis hSet ${key}/${field} failed.`);
   }
 }
 
@@ -273,7 +273,7 @@ export async function setHeatIndex(value) {
     try {
       await redisClient.del(HEAT_INDEX_KEY);
     } catch (error) {
-      logger.warn('Redis del heat_index failed:', error);
+      logger.warn(error, 'Redis del heat_index failed.');
     }
     return;
   }
@@ -327,7 +327,7 @@ export async function indexFlickrPhotoTags(photoId, tags) {
       tags.map((tag) => redisClient.sAdd(flickrTagKey(tag), id)),
     );
   } catch (error) {
-    logger.warn(`Redis index flickr tags for ${photoId} failed:`, error);
+    logger.warn(error, `Redis index flickr tags for ${photoId} failed.`);
   }
 }
 
@@ -339,7 +339,7 @@ export async function unindexFlickrPhotoTags(photoId, tags) {
       tags.map((tag) => redisClient.sRem(flickrTagKey(tag), id)),
     );
   } catch (error) {
-    logger.warn(`Redis unindex flickr tags for ${photoId} failed:`, error);
+    logger.warn(error, `Redis unindex flickr tags for ${photoId} failed.`);
   }
 }
 
@@ -368,12 +368,12 @@ export async function getFlickrPhotosByIds(photoIds) {
       try {
         out.push(JSON.parse(raw));
       } catch (parseErr) {
-        logger.warn('Redis flickr photo parse failed:', parseErr);
+        logger.warn(parseErr, 'Redis flickr photo parse failed.');
       }
     }
     return out;
   } catch (error) {
-    logger.warn('Redis hmGet flickr_photos failed:', error);
+    logger.warn(error, 'Redis hmGet flickr_photos failed.');
     return [];
   }
 }
@@ -387,7 +387,7 @@ export async function getFlickrPhotosMatchingTags(tags) {
     const ids = await redisClient.sUnion(keys);
     if (ids?.length) return getFlickrPhotosByIds(ids);
   } catch (error) {
-    logger.warn('Redis sUnion flickr tags failed:', error);
+    logger.warn(error, 'Redis sUnion flickr tags failed.');
   }
   return [];
 }
@@ -403,7 +403,7 @@ export async function rebuildFlickrTagIndex() {
       await redisClient.del(key);
     }
   } catch (error) {
-    logger.warn('Redis clear flickr tag index failed:', error);
+    logger.warn(error, 'Redis clear flickr tag index failed.');
     return;
   }
 
@@ -423,7 +423,7 @@ export async function deleteFlickrPhoto(photoId) {
     if (old?.tags?.length) await unindexFlickrPhotoTags(id, old.tags);
     await redisClient.hDel(FLICKR_PHOTOS_KEY, id);
   } catch (error) {
-    logger.warn(`Redis hDel flickr_photos/${photoId} failed:`, error);
+    logger.warn(error, `Redis hDel flickr_photos/${photoId} failed.`);
   }
 }
 
