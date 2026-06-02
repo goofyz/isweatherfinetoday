@@ -222,8 +222,8 @@ export async function runOneWarningUpdater() {
     if (sendWarning) {
       logger.info(`Warning - save warnings count: ${newWarnings.length}`);
       logger.info(`Content: ${JSON.stringify(json)}`);
-      await deleteCacheByPattern('api:weathers*');
       await setWarnings(newWarnings);
+      await deleteCacheByPattern('api:weathers*');
     }
   } catch (e) {
     // do nothing
