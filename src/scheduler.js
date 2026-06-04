@@ -12,15 +12,29 @@ import { runSpecialWeatherTipUpdater } from './jobs/special-weather-tip-updater.
 import { runWeatherForecastUpdater } from './jobs/weather-forecast-updater.js';
 import { runWeatherStationUpdater } from './jobs/weather-station-updater.js';
 import logger from './logger.js';
+import { enableJobTracking, jobTrackingUrls } from './job-tracking-config.js';
 
 process.env.TZ = process.env.TZ || 'Asia/Hong_Kong';
 
+async function trackEvent(url, event) {
+  if (!enableJobTracking || !url) return;
+  try {
+    await fetch(`${url}${event}`);
+  } catch (e) {
+    logger.warn(e, `[scheduler] Failed to track event: ${url}${event}`);
+  }
+}
+
 function wrap(name, fn) {
   return async () => {
+    const url = jobTrackingUrls[name];
     try {
+      await trackEvent(url, '/start');
       await fn();
+      await trackEvent(url, '');  // success - no suffix
     } catch (e) {
-      logger.error(`[scheduler] ${name}`, e);
+      await trackEvent(url, '/fail');
+      logger.error(e, `[scheduler] ${name}`);
     }
   };
 }
