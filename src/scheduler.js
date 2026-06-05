@@ -33,7 +33,7 @@ function wrap(name, fn) {
       await fn();
       await trackEvent(url, '');  // success - no suffix
     } catch (e) {
-      await trackEvent(url, '/fail');
+      // await trackEvent(url, '/fail');
       logger.error(e, `[scheduler] ${name}`);
     }
   };
