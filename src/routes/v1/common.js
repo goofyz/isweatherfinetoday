@@ -243,6 +243,63 @@ function buildWarningNode(w, lang) {
   });
 }
 
+function buildTipNode(t, lang) {
+  return omitNil({
+    time: t.time instanceof Date ? t.time.toISOString() : t.time,
+    title: isEng(lang) ? t.eng_title : t.chi_title,
+    content: isEng(lang) ? t.eng_content : t.chi_content,
+  });
+}
+
+function buildHeatIndexField(heatIndexRow, lang) {
+  if (!heatIndexRow) return undefined;
+  return omitNil({
+    time: heatIndexRow.time instanceof Date ? heatIndexRow.time.toISOString() : heatIndexRow.time,
+    warning_type: heatIndexRow.warning_type,
+    title: isEng(lang) ? heatIndexRow.eng_title : heatIndexRow.chi_title,
+    content: isEng(lang) ? heatIndexRow.eng_content : heatIndexRow.chi_content,
+  });
+}
+
+async function loadLiveWeathersFields(hkTodayMidnightMs) {
+  const [warningsRows, tipsRows, heatIndexFull] = await Promise.all([
+    getWarnings(),
+    getSpecialWeatherTips(),
+    getHeatIndex(),
+  ]);
+
+  const sortedWarnings = (warningsRows ?? []).slice();
+  sortedWarnings.sort((a, b) => warningSortOrder(a.warning_type) - warningSortOrder(b.warning_type));
+
+  const heatIndexRow =
+    heatIndexFull && heatIndexFull.time && new Date(heatIndexFull.time).getTime() >= hkTodayMidnightMs
+      ? heatIndexFull
+      : null;
+
+  return {
+    warningsRows: sortedWarnings,
+    tipsRows: tipsRows ?? [],
+    heatIndexRow,
+  };
+}
+
+function applyLiveFieldsToResponse(response, liveFields, lang) {
+  if (!response?.data) return response;
+  const { warningsRows, tipsRows, heatIndexRow } = liveFields;
+  const heat_index = buildHeatIndexField(heatIndexRow, lang);
+  const data = {
+    ...response.data,
+    warnings: warningsRows.map((w) => buildWarningNode(w, lang)),
+    special_weather_tips: tipsRows.map((t) => buildTipNode(t, lang)),
+  };
+  if (heat_index !== undefined) {
+    data.heat_index = heat_index;
+  } else {
+    delete data.heat_index;
+  }
+  return { ...response, data };
+}
+
 const WEATHERS_GLOBAL_CACHE_KEY = 'api:weathers:global';
 
 function parseTyphoonIds(typhoonId) {
@@ -292,21 +349,8 @@ function weathersFullCacheKey({
   )}`;
 }
 
-async function fetchWeathersGlobalBundle(hkTodayIso, hkTodayMidnightMs) {
-  const [todayRow, warningsRows, tipsRows, heatIndexFull, forecastsMap] = await Promise.all([
-    getToday(),
-    getWarnings(),
-    getSpecialWeatherTips(),
-    getHeatIndex(),
-    getAllForecasts(),
-  ]);
-
-  warningsRows.sort((a, b) => warningSortOrder(a.warning_type) - warningSortOrder(b.warning_type));
-
-  const heatIndexRow =
-    heatIndexFull && heatIndexFull.time && new Date(heatIndexFull.time).getTime() >= hkTodayMidnightMs
-      ? heatIndexFull
-      : null;
+async function fetchWeathersGlobalBundle(hkTodayIso) {
+  const [todayRow, forecastsMap] = await Promise.all([getToday(), getAllForecasts()]);
 
   const typhoonIds = parseTyphoonIds(todayRow?.typhoon_id);
   const typhoonRows = typhoonIds.length ? await getTyphoons(typhoonIds) : [];
@@ -315,7 +359,7 @@ async function fetchWeathersGlobalBundle(hkTodayIso, hkTodayMidnightMs) {
     .filter((f) => f.forecast_day && String(f.forecast_day) >= hkTodayIso)
     .sort((a, b) => String(a.forecast_day).localeCompare(String(b.forecast_day)));
 
-  return { todayRow, warningsRows, tipsRows, heatIndexRow, typhoonRows, forecasts };
+  return { todayRow, typhoonRows, forecasts };
 }
 
 async function buildFlickrImageOuter(todayRow, deviceHeight, deviceWidth) {
@@ -375,8 +419,9 @@ async function fetchWeathersLocationBundle({
   };
 }
 
-function buildWeathersResponse(global, loc, lang) {
-  const { todayRow, warningsRows, tipsRows, heatIndexRow, typhoonRows, forecasts } = global;
+function buildWeathersResponse(global, loc, lang, liveFields) {
+  const { todayRow, typhoonRows, forecasts } = global;
+  const { warningsRows, tipsRows, heatIndexRow } = liveFields;
   const { wxRow, aqStation, imageOuter, message } = loc;
   const firstFc = forecasts[0];
 
@@ -419,21 +464,8 @@ function buildWeathersResponse(global, loc, lang) {
         name: isEng(lang) ? t.eng_name : t.chi_name,
       }),
     ),
-    special_weather_tips: tipsRows.map((t) =>
-      omitNil({
-        time: t.time instanceof Date ? t.time.toISOString() : t.time,
-        title: isEng(lang) ? t.eng_title : t.chi_title,
-        content: isEng(lang) ? t.eng_content : t.chi_content,
-      }),
-    ),
-    heat_index: heatIndexRow
-      ? omitNil({
-          time: heatIndexRow.time instanceof Date ? heatIndexRow.time.toISOString() : heatIndexRow.time,
-          warning_type: heatIndexRow.warning_type,
-          title: isEng(lang) ? heatIndexRow.eng_title : heatIndexRow.chi_title,
-          content: isEng(lang) ? heatIndexRow.eng_content : heatIndexRow.chi_content,
-        })
-      : undefined,
+    special_weather_tips: tipsRows.map((t) => buildTipNode(t, lang)),
+    heat_index: buildHeatIndexField(heatIndexRow, lang),
     aqhi: todayRow.aqhi_current,
     aqhi_update_time:
       todayRow.aqhi_update_time instanceof Date
@@ -470,6 +502,10 @@ export {
   pickForecastWind,
   buildForecastNode,
   buildWarningNode,
+  buildTipNode,
+  buildHeatIndexField,
+  loadLiveWeathersFields,
+  applyLiveFieldsToResponse,
   WEATHERS_GLOBAL_CACHE_KEY,
   parseTyphoonIds,
   weathersLocCacheKey,

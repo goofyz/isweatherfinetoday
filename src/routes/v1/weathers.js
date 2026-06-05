@@ -9,6 +9,8 @@ import {
   fetchWeathersGlobalBundle,
   fetchWeathersLocationBundle,
   buildWeathersResponse,
+  loadLiveWeathersFields,
+  applyLiveFieldsToResponse,
   DateTime,
   HK,
   getCachedWeatherStationsAndData,
@@ -49,23 +51,26 @@ router.post('/', async (req, res) => {
     const fullCacheKey = weathersFullCacheKey(cacheParams);
     const locCacheKey = weathersLocCacheKey(cacheParams);
 
-    const [fullCached, globalCached, locCached] = await Promise.all([
+    const hkTodayIso = DateTime.now().setZone(HK).toISODate();
+    const hkTodayMidnightMs = DateTime.fromISO(hkTodayIso, { zone: HK }).startOf('day').toMillis();
+
+    const [fullCached, globalCached, locCached, liveFields] = await Promise.all([
       getCacheWithStats(fullCacheKey),
       getCache(WEATHERS_GLOBAL_CACHE_KEY),
       getCache(locCacheKey),
+      loadLiveWeathersFields(hkTodayMidnightMs),
     ]);
 
-    if (fullCached) return res.json(fullCached);
-
-    const hkTodayIso = DateTime.now().setZone(HK).toISODate();
-    const hkTodayMidnightMs = DateTime.fromISO(hkTodayIso, { zone: HK }).startOf('day').toMillis();
+    if (fullCached) {
+      return res.json(applyLiveFieldsToResponse(fullCached, liveFields, lang));
+    }
 
     let global = globalCached;
     let loc = locCached;
 
     if (!global && !loc) {
       const [globalBundle] = await Promise.all([
-        fetchWeathersGlobalBundle(hkTodayIso, hkTodayMidnightMs),
+        fetchWeathersGlobalBundle(hkTodayIso),
         getCachedWeatherStationsAndData(),
         getCachedAqhiStationsAndData(),
       ]);
@@ -83,7 +88,7 @@ router.post('/', async (req, res) => {
       setCacheInBackground(locCacheKey, loc);
     } else {
       if (!global) {
-        global = await fetchWeathersGlobalBundle(hkTodayIso, hkTodayMidnightMs);
+        global = await fetchWeathersGlobalBundle(hkTodayIso);
         setCacheInBackground(WEATHERS_GLOBAL_CACHE_KEY, global);
       }
       if (!loc) {
@@ -114,7 +119,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const response = buildWeathersResponse(global, loc, lang);
+    const response = buildWeathersResponse(global, loc, lang, liveFields);
     setCacheInBackground(fullCacheKey, response);
     res.json(response);
   } catch (e) {
