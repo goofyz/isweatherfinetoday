@@ -13,7 +13,7 @@ function newMessageId() {
   return randomBytes(12).toString('base64url');
 }
 
-async function sendFcmMulticast(regIds, payload) {
+async function sendFcmMulticast(regIds, payload, collapseKey) {
   if (!firebaseApp) {
     throw new Error('Firebase Admin SDK not initialized');
   }
@@ -22,6 +22,10 @@ async function sendFcmMulticast(regIds, payload) {
     tokens: regIds,
     data: payload,
   };
+
+  if (collapseKey) {
+    message.collapseKey = collapseKey;
+  }
 
   try {
     const response = await firebaseApp.messaging().sendEachForMulticast(message);
@@ -161,7 +165,7 @@ export async function sendGcmImmediate() {
         op: String(notif.op),
         content: String(notif.content ?? ''),
         update_time: JSON.stringify(createdIso),
-      });
+      }, notif.collapse_key);
 
       await query(
         `UPDATE gcm_notifications SET sent_time=NOW(), response=$2, updated_at=NOW() WHERE id=$1`,
