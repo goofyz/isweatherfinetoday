@@ -21,10 +21,18 @@ async function sendFcmMulticast(regIds, payload, collapseKey) {
   const message = {
     tokens: regIds,
     data: payload,
+    android: {
+      priority: 'high',
+    },
+    apns: {
+      headers: {
+        'apns-priority': '10',
+      },
+    },
   };
 
   if (collapseKey) {
-    message.collapseKey = collapseKey;
+    message.android.collapseKey = collapseKey;
   }
 
   try {
