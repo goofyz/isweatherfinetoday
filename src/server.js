@@ -1,5 +1,6 @@
 import path from 'path';
 import express from 'express';
+import compression from 'compression';
 import { fileURLToPath } from 'url';
 
 import weather_stations from '../db/weather_stations.json' with { type: 'json' };
@@ -18,6 +19,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(express.static(publicDir));
+app.use('/api/v1', compression());
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
