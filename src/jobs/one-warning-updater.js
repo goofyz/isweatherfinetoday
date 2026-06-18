@@ -169,9 +169,9 @@ async function createWarning(warning_type, warns) {
 
 async function loadWarningsFromNetwork(warns) {
   const warningDefs = [
-    'WTS',
     'WTCSGNL',
     'WRAIN',
+    'WTS',
     'WFIRE',
     'WFNTSA',
     'WL',
