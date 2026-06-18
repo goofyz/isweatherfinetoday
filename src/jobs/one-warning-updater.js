@@ -184,7 +184,7 @@ async function loadWarningsFromNetwork(warns) {
   const warningObjs = [];
   for (const w of warningDefs) {
     if (checkWarningUp(warns, w)) {
-      logger.info(w);
+      logger.info(`Warning Up: ${w}`);
       const warning = await createWarning(w, warns);
       if (warning) warningObjs.push(warning);
     }

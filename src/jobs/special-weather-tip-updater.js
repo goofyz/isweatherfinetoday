@@ -45,13 +45,23 @@ async function getAllTips() {
   const engContent = await getRemotePageAsString(
     'https://pda.weather.gov.hk/locspc/android_data/headline.xml',
   );
-  if (!engContent?.trim()) return [];
+  if (!engContent?.trim()) {
+    logger.error('SpecialWeatherTip - no English content found');
+    logger.error(`SpecialWeatherTip - English content: ${engContent}`);
+    return [];
+  }
   const chiContent = await getRemotePageAsString(
     'https://pda.weather.gov.hk/locspc/android_data/headline_uc.xml',
   );
   const engTips = parseTips(engContent);
   const chiTips = parseTips(chiContent ?? '');
-  if (engTips.length !== chiTips.length) return [];
+  if (engTips.length !== chiTips.length) {
+    logger.error('SpecialWeatherTip - mismatched tip counts');
+    logger.error(`SpecialWeatherTip - English tips: ${engTips.length}, Chinese tips: ${chiTips.length}`);
+    logger.error(`SpecialWeatherTip - English content: ${engContent}`);
+    logger.error(`SpecialWeatherTip - Chinese content: ${chiContent}`);
+    return [];
+  }
 
   const out = [];
   for (let i = 0; i < engTips.length; i += 1) {
