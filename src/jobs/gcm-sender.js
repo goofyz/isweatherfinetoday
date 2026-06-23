@@ -4,10 +4,10 @@ import { query, queryOne } from '../db.js';
 import logger from '../logger.js';
 
 // FCM error code constants
-const FCM_ERROR_UNAVAILABLE = 'UNAVAILABLE';
-const FCM_ERROR_INTERNAL = 'INTERNAL';
-const FCM_ERROR_UNREGISTERED = 'UNREGISTERED';
-const FCM_ERROR_INVALID_ARGUMENT = 'INVALID_ARGUMENT';
+const FCM_ERROR_UNAVAILABLE = 'messaging/server-unavailable';
+const FCM_ERROR_INTERNAL = 'messaging/internal-error';
+const FCM_ERROR_UNREGISTERED = 'messaging/registration-token-not-registered';
+const FCM_ERROR_INVALID_ARGUMENT = 'messaging/invalid-argument';
 
 function newMessageId() {
   return randomBytes(12).toString('base64url');
