@@ -41,7 +41,7 @@ export async function runCommunityStationUpdater() {
 
     const updateTime = DateTime.fromISO(String(station.time), { zone: HK }).toFormat('HH:mm');
     await setStationData(code, {
-      wind_direction: handleWindDirection(station.wd),
+      wind_direction: handleWindDirection(station.wd) * 22.5,
       wind_speed: Math.round(handleWindDirection(station.ws)),
       temperature: handleTemperature(station.temp),
       humidity: handleTemperature(station.rh),
