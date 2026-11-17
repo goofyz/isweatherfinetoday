@@ -1,0 +1,56 @@
+[
+  {
+    "code": "hko",
+    "chi_name": "香港天文台",
+    "eng_name": "Hong Kong Observatory",
+    "lat": "22.301944",
+    "lng": "114.174297",
+    "photo_code": "hko",
+    "webcam_angle": 90
+  },
+  {
+    "code": "sty",
+    "chi_name": "赤柱",
+    "eng_name": "Stanley",
+    "lat": "22.214083",
+    "lng": "114.218511",
+    "wind_lat": "22.1975",
+    "wind_lng": "114.211944",
+    "webcam_angle": 0
+  },
+  {
+    "code": "cwb",
+    "chi_name": "清水灣",
+    "eng_name": "Clear Water Bay",
+    "lat": "22.26333",
+    "lng": "114.29972",
+    "photo_code": "cwa,cwb",
+    "webcam_angle": 225
+  },
+  {
+    "code": "lam",
+    "chi_name": "南丫島",
+    "eng_name": "Lamma Island",
+    "lat": "22.226228",
+    "lng": "114.10864",
+    "photo_code": "lam",
+    "webcam_angle": 315
+  },
+  {
+    "code": "cch",
+    "chi_name": "長洲",
+    "eng_name": "Cheung Chau",
+    "lat": "22.201111",
+    "lng": "114.026669",
+    "photo_code": "cch",
+    "webcam_angle": 360
+  },
+  {
+    "code": "cwa",
+    "chi_name": "清水灣",
+    "eng_name": "Clear Water Bay",
+    "lat": "22.26333",
+    "lng": "114.29972",
+    "webcam_angle": 90
+  }
+]
