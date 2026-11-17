@@ -1,0 +1,74 @@
+var stationConfigAWS = [];
+
+stationConfigAWS["hko"] = {
+  code: "hko",
+  name_EN: "HK Observatory",
+  name_TC: "香港天文台",
+  name_SC: "香港天文台",
+  temp: { code: "hkoc", latitude: "22.301944", longitude: "114.174297", mustDisplay: true },
+  rh: { code: "hkoc", latitude: "22.301944", longitude: "114.174297", mustDisplay: false },
+  wind: { code: "", latitude: "", longitude: "", mustDisplay: false },
+  weatherPhoto: {
+    webcam: [
+      { code: "hko", latitude: "22.301944", longitude: "114.174297", angle: "e", direction_EN: "east", name_EN: "Tsim Sha Tsui", name_TC: "尖沙咀" }
+    ]
+  }
+};
+
+stationConfigAWS["sty"] = {
+  code: "sty",
+  name_EN: "Stanley",
+  name_TC: "赤柱",
+  temp: { code: "sty", latitude: "22.214083", longitude: "114.218511", mustDisplay: true },
+  wind: { code: "bhd", latitude: "22.197500", longitude: "114.211944", mustDisplay: false },
+  weatherPhoto: { webcam: [] }
+};
+
+stationConfigAWS["cwb"] = {
+  code: "cwb",
+  name_EN: " Clear  Water Bay ",
+  name_TC: "清水灣",
+  temp: { code: "cwb", latitude: "22.263389", longitude: "114.299769", mustDisplay: false },
+  wind: { code: "", latitude: "", longitude: "", mustDisplay: false },
+  weatherPhoto: {
+    webcam: [
+      { code: "cwb", latitude: "22.263389", longitude: "114.299769", angle: "sw", direction_EN: "southwest" },
+      { code: "CWA", latitude: "22.263389", longitude: "114.299769", angle: "e", direction_EN: "east" }
+    ]
+  }
+};
+
+stationConfigAWS["lam"] = {
+  code: "lam",
+  name_EN: "Lamma Island",
+  name_TC: "南丫島",
+  temp: { code: "", latitude: "", longitude: "", mustDisplay: false },
+  wind: { code: "lam", latitude: "22.226228", longitude: "114.108640", mustDisplay: false },
+  weatherPhoto: {
+    webcam: [
+      { code: "lam", latitude: "22.226228", longitude: "114.108640", angle: "n", direction_EN: "north" }
+    ]
+  }
+};
+
+stationConfigAWS["cch"] = {
+  code: "cch",
+  name_EN: "Cheung Chau",
+  name_TC: "長洲",
+  temp: { code: "cch", latitude: "22.201111", longitude: "114.026669", mustDisplay: false },
+  wind: { code: "", latitude: "", longitude: "", mustDisplay: false },
+  weatherPhoto: {
+    webcam: [
+      { code: "cch", latitude: "22.201111", longitude: "114.026669", angle: "n", direction_EN: "north" }
+    ]
+  }
+};
+
+stationConfigAWS["onlylive"] = {
+  code: "onlylive",
+  name_EN: "Only Live",
+  name_TC: "只在地圖",
+  temp: { code: "onlylive", latitude: "22.30", longitude: "114.20", mustDisplay: false },
+  wind: { code: "", latitude: "", longitude: "", mustDisplay: false },
+  weatherPhoto: { webcam: [] }
+};

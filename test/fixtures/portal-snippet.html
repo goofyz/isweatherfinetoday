@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+window.location.replace("https://www.hko.gov.hk/en/wxinfo/awsgis/regional_portal.html");
+</script>
+<!--
+  Legacy page. The current portal does not execute this.
+  document.write("<script src='files/station-config-aws.js?v=1'><\/script>");
+-->
+<script>
+  //document.write("<script src='files/station-config-rmn.js?v=1'><\/script>");
+  document.write("<script type='text/javascript' src='files/irwip-station-config-aws.js?v=" + currentTimestamp + "'><\/script>");
+  document.write("<script type='text/javascript' src='files/irwip-station-config-api.js?v=" + currentTimestamp + "'><\/script>");
+</script>
+</body>
+</html>
